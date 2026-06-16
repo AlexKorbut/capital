@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>КАПИТАЛЬ — Мокап U · в стиле Stripe</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#ffffff; --surface:#ffffff; --surface2:#f6f9fc; --line:#e6ebf1;
+    --ink:#0a2540; --muted:#425466; --indigo:#635bff; --indigo-deep:#4b44d6; --link:#635bff; --cyan:#00d4ff; --teal:#11c8a6;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased;line-height:1.5;letter-spacing:-.01em}
+  .num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 28px}
+  a{color:inherit;text-decoration:none}
+
+  /* signature stripe diagonal gradient band */
+  .top{position:relative;overflow:hidden}
+  .top::before{content:"";position:absolute;left:0;right:0;top:0;height:560px;z-index:-1;
+    background:linear-gradient(150deg,#a5f3eb 0%,#7c8bff 38%,#635bff 60%,#3f2bdb 100%);
+    transform:skewY(-7deg);transform-origin:top left}
+  .ink-on{color:#fff}
+
+  nav{display:flex;align-items:center;justify-content:space-between;padding:22px 0}
+  .logo{font-weight:800;font-size:20px;letter-spacing:-.02em;color:#fff}
+  .navlinks{display:flex;gap:22px;margin-left:26px}
+  .navlinks a{font-size:14.5px;color:rgba(255,255,255,.92);font-weight:600}
+  .navlinks a:hover{color:#fff;opacity:.8}
+  .navleft{display:flex;align-items:center}
+  .navbtns{display:flex;gap:10px;align-items:center}
+  .btn{height:42px;display:inline-flex;align-items:center;gap:8px;padding:0 18px;border-radius:18px;font-weight:600;font-size:14.5px;border:1px solid transparent;cursor:pointer;transition:.18s}
+  .btn-white{background:#fff;color:var(--indigo)}
+  .btn-white:hover{background:#f3f3ff}
+  .btn-glass{background:rgba(255,255,255,.16);color:#fff}
+  .btn-glass:hover{background:rgba(255,255,255,.26)}
+  .btn-primary{background:var(--indigo);color:#fff}
+  .btn-primary:hover{background:var(--indigo-deep)}
+  .btn-outline{border-color:var(--line);color:var(--ink);background:#fff}
+  .btn-outline:hover{box-shadow:0 2px 8px rgba(10,37,64,.08)}
+
+  .hero{padding:64px 0 96px;display:grid;grid-template-columns:1.15fr 1fr;gap:40px;align-items:center}
+  @media(max-width:760px){.hero{grid-template-columns:1fr}}
+  .pill{display:inline-block;font-size:13px;color:#fff;background:rgba(255,255,255,.18);padding:6px 13px;border-radius:999px;font-weight:600}
+  h1{font-size:clamp(40px,6.4vw,68px);line-height:1.06;letter-spacing:-.035em;font-weight:800;margin:18px 0 0;color:#fff;max-width:15ch}
+  .sub{color:rgba(255,255,255,.92);font-size:19px;max-width:46ch;margin:20px 0 0;font-weight:400}
+  .cta{display:flex;gap:12px;margin-top:30px;flex-wrap:wrap}
+  .fineprint{color:rgba(255,255,255,.8);font-size:13px;margin-top:16px}
+  .heroCard{background:#fff;border-radius:18px;padding:24px;box-shadow:0 50px 100px -20px rgba(50,50,93,.35),0 30px 60px -30px rgba(0,0,0,.35)}
+  .heroCard .lbl{font-size:13px;color:var(--muted);font-weight:500}
+  .heroCard .big{font-size:40px;font-weight:800;margin-top:4px;letter-spacing:-.03em}
+  .heroCard .big .cur{color:var(--indigo)}
+  .heroCard .pos{color:var(--teal);font-size:14px;font-weight:600;margin-top:6px}
+  .heroCard .mini{height:64px;display:flex;align-items:flex-end;gap:5px;margin-top:18px}
+  .heroCard .mini span{flex:1;background:linear-gradient(180deg,var(--indigo),#a9a4ff);border-radius:4px 4px 0 0}
+
+  .preview-label{font-size:13px;letter-spacing:.04em;margin:60px 0 16px;color:var(--muted);font-weight:600}
+  .board{background:var(--surface2);border:1px solid var(--line);border-radius:20px;padding:22px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:24px;box-shadow:0 2px 5px rgba(50,50,93,.06)}
+  .net .label{color:var(--muted);font-size:14px;font-weight:500}
+  .net .figure{font-size:clamp(42px,6.5vw,62px);font-weight:800;letter-spacing:-.035em;margin-top:6px;line-height:1}
+  .net .figure .cur{color:var(--indigo)}
+  .net .delta{display:inline-flex;gap:6px;margin-top:14px;color:var(--teal);font-size:14px;font-weight:600}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
+  @media(max-width:760px){.cols{grid-template-columns:1fr}}
+  .ttl{color:var(--muted);font-size:13px;font-weight:600;margin-bottom:18px}
+  .donut-row{display:flex;align-items:center;gap:20px}
+  .donut{width:124px;height:124px;border-radius:50%;
+    background:conic-gradient(var(--indigo) 0 46%, var(--teal) 46% 70%, var(--cyan) 70% 86%, #c5cede 86% 100%);
+    -webkit-mask:radial-gradient(circle 42px at 50% 50%,transparent 98%,#000 100%);
+            mask:radial-gradient(circle 42px at 50% 50%,transparent 98%,#000 100%)}
+  .legend{display:flex;flex-direction:column;gap:11px;font-size:14px;flex:1}
+  .legend .li{display:flex;align-items:center;justify-content:space-between}
+  .legend .k{display:flex;align-items:center;gap:10px;font-weight:500}
+  .sw{width:10px;height:10px;border-radius:50%}
+  .legend .v{color:var(--muted)}
+  .spark{height:120px;display:flex;align-items:flex-end;gap:8px;margin-top:4px}
+  .spark span{flex:1;background:linear-gradient(180deg,var(--indigo),#bdb9ff);border-radius:5px 5px 0 0}
+  .assets .row{display:flex;align-items:center;justify-content:space-between;padding:14px 0;border-top:1px solid var(--line);font-size:14.5px}
+  .assets .row:first-of-type{border-top:0}
+  .assets .nm{font-weight:600}
+  .assets .meta{color:var(--muted);margin-left:8px;font-weight:400}
+  .assets .row .num{font-weight:600}
+  .footer{color:var(--muted);font-size:12.5px;padding:54px 0 40px}
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="wrap">
+    <nav>
+      <div class="navleft">
+        <div class="logo">КАПИТАЛЬ</div>
+        <div class="navlinks"><a>Продукт</a><a>Тарифы</a><a>Безопасность</a><a>Документация</a></div>
+      </div>
+      <div class="navbtns">
+        <a class="btn btn-glass">Войти</a>
+        <a class="btn btn-white">Начать бесплатно →</a>
+      </div>
+    </nav>
+
+    <section class="hero">
+      <div>
+        <span class="pill">Инфраструктура для вашего капитала</span>
+        <h1>Капитал, собранный безупречно</h1>
+        <p class="sub">Добавляйте активы голосом, текстом, фото или из Excel. Любая валюта по курсам ЦБ, динамика и персональные инсайты — на одном дашборде.</p>
+        <div class="cta">
+          <a class="btn btn-white">Начать бесплатно →</a>
+          <a class="btn btn-glass">Связаться с нами</a>
+        </div>
+        <p class="fineprint">Free навсегда · карта не нужна · данные шифруются at-rest</p>
+      </div>
+      <div class="heroCard">
+        <div class="lbl">Чистый капитал</div>
+        <div class="big num"><span class="cur">$</span>248 640</div>
+        <div class="pos">↗ +4,2% за месяц · +$9 980</div>
+        <div class="mini">
+          <span style="height:42%"></span><span style="height:51%"></span><span style="height:47%"></span>
+          <span style="height:63%"></span><span style="height:58%"></span><span style="height:72%"></span>
+          <span style="height:69%"></span><span style="height:84%"></span><span style="height:92%"></span>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<div class="wrap">
+  <p class="preview-label">Ваш капитал — наглядно</p>
+  <div class="board">
+    <div class="card net">
+      <div class="label">Чистый капитал</div>
+      <div class="figure num"><span class="cur">$</span>248 640</div>
+      <span class="delta">↗ +4,2% за месяц · +$9 980</span>
+    </div>
+
+    <div class="cols">
+      <div class="card">
+        <div class="ttl">Структура по типам</div>
+        <div class="donut-row">
+          <div class="donut"></div>
+          <div class="legend">
+            <div class="li"><span class="k"><span class="sw" style="background:var(--indigo)"></span>Наличные</span><span class="v num">$114k</span></div>
+            <div class="li"><span class="k"><span class="sw" style="background:var(--teal)"></span>Крипта</span><span class="v num">$59k</span></div>
+            <div class="li"><span class="k"><span class="sw" style="background:var(--cyan)"></span>Депозиты</span><span class="v num">$40k</span></div>
+            <div class="li"><span class="k"><span class="sw" style="background:#c5cede"></span>Акции</span><span class="v num">$35k</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="ttl">Динамика капитала</div>
+        <div class="spark">
+          <span style="height:44%"></span><span style="height:52%"></span><span style="height:48%"></span>
+          <span style="height:62%"></span><span style="height:57%"></span><span style="height:71%"></span>
+          <span style="height:68%"></span><span style="height:82%"></span><span style="height:90%"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card assets" style="margin-top:16px">
+      <div class="ttl">Активы (5)</div>
+      <div class="row"><div><span class="nm">Наличные</span><span class="meta">10 000 EUR · Минск</span></div><span class="num">$10 820</span></div>
+      <div class="row"><div><span class="nm">Криптовалюта</span><span class="meta">2 BTC · кошелёк</span></div><span class="num">$58 400</span></div>
+      <div class="row"><div><span class="nm">Депозит</span><span class="meta">1 000 GEL · Bank of Georgia · 9%</span></div><span class="num">$372</span></div>
+      <div class="row"><div><span class="nm">Акции</span><span class="meta">120 AAPL</span></div><span class="num">$28 200</span></div>
+      <div class="row"><div><span class="nm">Наличные</span><span class="meta">9 500 USD</span></div><span class="num">$9 500</span></div>
+    </div>
+  </div>
+
+  <p class="footer">Мокап U · «в стиле Stripe» — фирменный диагональный градиент-баннер (skewY), индиго #635BFF, белые pill-кнопки на цвете, парящая карточка с глубокой мягкой тенью, чистый Inter, светлый низ. Эталон dev-премиум-лендинга.</p>
+</div>
+</body>
+</html>

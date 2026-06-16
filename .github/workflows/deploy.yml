@@ -1,0 +1,94 @@
+name: CI/CD
+
+# Test on every push/PR; deploy to the VPS only when main advances.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend lint + tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Ruff lint
+        run: ruff check .
+
+      - name: Pytest
+        # Dev config: SQLite + in-memory adapters, no external services needed.
+        # FERNET_KEY is intentionally unset — crypto.py is a no-op without it.
+        env:
+          ENVIRONMENT: development
+          DATABASE_URL: sqlite+aiosqlite:///./ci.db
+          JWT_SECRET: ci_secret_min_32_chars_long_padding_value_xx
+        run: pytest -q
+
+  frontend:
+    name: Frontend typecheck + build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck + build
+        run: npm run build
+
+  deploy:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    # Only deploy real pushes to main — never PRs or forks.
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: SSH deploy
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          # The VPS holds a checkout of this repo with a populated prod .env.
+          script: |
+            set -euo pipefail
+            cd ${{ secrets.DEPLOY_PATH }}
+            git fetch --all --prune
+            git reset --hard origin/main
+            export GIT_SHA="${{ github.sha }}"
+            docker compose pull --ignore-buildable || true
+            docker compose up -d --build
+            # Apply DB migrations against the running backend image.
+            docker compose run --rm backend alembic upgrade head
+            # Reload the edge proxy so any nginx template changes take effect.
+            docker compose exec -T nginx nginx -s reload || true
+            # Reclaim disk from superseded images/layers.
+            docker image prune -f

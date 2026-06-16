@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>КАПИТАЛЬ — Мокап R · в стиле Amazon</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#ffffff; --panel:#f7f8f8; --surface:#ffffff; --line:#d5d9d9; --line2:#e7e9e9;
+    --ink:#0f1111; --muted:#565959; --navy:#131921; --navy2:#232f3e; --orange:#ff9900; --link:#007185;
+    --yellow:#ffd814; --yellow-h:#f7ca00;
+    --radius:8px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:Inter,"Amazon Ember",Arial,sans-serif;-webkit-font-smoothing:antialiased;line-height:1.45}
+  .num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+  a{color:inherit;text-decoration:none}
+  .link{color:var(--link)}.link:hover{color:#c7511f;text-decoration:underline}
+
+  .topbar{background:var(--navy);color:#fff}
+  nav{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;max-width:1080px;margin:0 auto;gap:16px}
+  .logo{font-weight:700;font-size:20px;letter-spacing:-.01em;display:flex;align-items:end;gap:2px}
+  .logo .smile{color:var(--orange)}
+  .search{flex:1;max-width:520px;display:flex;height:40px;border-radius:7px;overflow:hidden}
+  .search input{flex:1;border:0;padding:0 14px;font-size:14px;outline:0}
+  .search .go{width:46px;background:var(--orange);display:flex;align-items:center;justify-content:center;color:#111;font-weight:700}
+  .navbtns{display:flex;gap:8px;align-items:center}
+  .btn{height:40px;display:inline-flex;align-items:center;gap:8px;padding:0 16px;border-radius:20px;font-weight:600;font-size:13.5px;border:1px solid transparent;cursor:pointer;transition:.12s}
+  .btn-primary{background:var(--yellow);color:#0f1111;border-color:#fcd200}
+  .btn-primary:hover{background:var(--yellow-h)}
+  .btn-link{color:#fff;background:transparent}
+  .btn-link:hover{outline:1px solid #fff;border-radius:4px}
+  .btn-outline{border-color:var(--line);color:var(--ink);background:#fff}
+  .btn-outline:hover{background:var(--panel)}
+
+  .hero{padding:46px 0 40px;display:grid;grid-template-columns:1.3fr 1fr;gap:36px;align-items:center}
+  @media(max-width:760px){.hero{grid-template-columns:1fr}}
+  .pill{display:inline-block;font-size:12.5px;color:#fff;background:var(--navy2);padding:5px 11px;border-radius:4px;font-weight:600}
+  h1{font-size:clamp(34px,5vw,52px);line-height:1.1;letter-spacing:-.02em;font-weight:700;margin:16px 0 0}
+  .sub{color:var(--muted);font-size:17px;max-width:48ch;margin:16px 0 0}
+  .cta{display:flex;gap:12px;margin-top:24px;flex-wrap:wrap;align-items:center}
+  .cta .btn{height:44px;padding:0 26px}
+  .fineprint{color:var(--muted);font-size:12.5px;margin-top:14px}
+  .heroCard{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:20px}
+  .heroCard .lbl{font-size:13px;color:var(--muted)}
+  .heroCard .big{font-size:34px;font-weight:700;margin-top:4px}
+  .heroCard .big .cur{color:var(--orange)}
+  .heroCard .pos{color:#067d62;font-size:13.5px;font-weight:600;margin-top:6px}
+  .heroCard .prime{margin-top:14px;font-size:12.5px;color:var(--muted)}
+  .heroCard .prime b{color:#067d62}
+
+  .preview-label{font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin:40px 0 14px;color:var(--muted);font-weight:700}
+  .board{background:var(--panel);border:1px solid var(--line2);border-radius:var(--radius);padding:18px}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:20px}
+  .net{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px}
+  .net .label{color:var(--muted);font-size:13px}
+  .net .figure{font-size:clamp(38px,6vw,56px);font-weight:700;letter-spacing:-.02em;margin-top:4px;line-height:1}
+  .net .figure .cur{color:var(--orange)}
+  .net .delta{color:#067d62;font-size:14px;font-weight:700}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
+  @media(max-width:760px){.cols{grid-template-columns:1fr}}
+  .ttl{color:var(--ink);font-size:14px;font-weight:700;margin-bottom:16px}
+  .donut-row{display:flex;align-items:center;gap:18px}
+  .donut{width:120px;height:120px;border-radius:50%;
+    background:conic-gradient(var(--orange) 0 46%, var(--navy2) 46% 70%, #007185 70% 86%, #c7c9c9 86% 100%);
+    -webkit-mask:radial-gradient(circle 41px at 50% 50%,transparent 98%,#000 100%);
+            mask:radial-gradient(circle 41px at 50% 50%,transparent 98%,#000 100%)}
+  .legend{display:flex;flex-direction:column;gap:9px;font-size:13.5px;flex:1}
+  .legend .li{display:flex;align-items:center;justify-content:space-between}
+  .legend .k{display:flex;align-items:center;gap:9px}
+  .sw{width:10px;height:10px;border-radius:2px}
+  .legend .v{color:var(--muted);font-weight:600}
+  .spark{height:118px;display:flex;align-items:flex-end;gap:7px;margin-top:4px}
+  .spark span{flex:1;background:var(--navy2);border-radius:2px 2px 0 0}
+  .spark span:last-child{background:var(--orange)}
+  .assets .row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-top:1px solid var(--line2);font-size:14px}
+  .assets .row:first-of-type{border-top:0}
+  .assets .nm{font-weight:600}
+  .assets .meta{color:var(--muted);margin-left:8px;font-weight:400}
+  .assets .row .num{font-weight:700}
+  .footer{color:var(--muted);font-size:12.5px;padding:40px 0;border-top:1px solid var(--line2);margin-top:32px}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <nav>
+    <div class="logo">КАПИТАЛЬ<span class="smile">‿</span></div>
+    <div class="search"><input placeholder="Найти актив, валюту или инсайт…" /><span class="go">⌕</span></div>
+    <div class="navbtns">
+      <a class="btn btn-link">Войти</a>
+      <a class="btn btn-primary">Начать бесплатно</a>
+    </div>
+  </nav>
+</div>
+
+<div class="wrap">
+  <section class="hero">
+    <div>
+      <span class="pill">Приватный трекер капитала · 11 AI-агентов</span>
+      <h1>Весь капитал — как заказ в один клик</h1>
+      <p class="sub">Добавляйте активы голосом, текстом, фото или из Excel. Мы сведём их в любую валюту по курсам ЦБ и дадим персональные инсайты.</p>
+      <div class="cta">
+        <a class="btn btn-primary">Начать бесплатно</a>
+        <a class="btn btn-outline">У меня есть аккаунт</a>
+      </div>
+      <p class="fineprint">Free навсегда · карта не нужна · данные шифруются at-rest</p>
+    </div>
+    <div class="heroCard">
+      <div class="lbl">Чистый капитал</div>
+      <div class="big num"><span class="cur">$</span>248 640</div>
+      <div class="pos">▲ +4,2% за месяц · +$9 980</div>
+      <div class="prime">Обновление курсов: <b>каждый час · бесплатно</b></div>
+    </div>
+  </section>
+
+  <p class="preview-label">Ваш капитал</p>
+  <div class="board">
+    <div class="card net">
+      <div>
+        <div class="label">Чистый капитал</div>
+        <div class="figure num"><span class="cur">$</span>248 640</div>
+      </div>
+      <div class="delta">▲ +4,2% / мес · +$9 980</div>
+    </div>
+
+    <div class="cols">
+      <div class="card">
+        <div class="ttl">Структура по типам</div>
+        <div class="donut-row">
+          <div class="donut"></div>
+          <div class="legend">
+            <div class="li"><span class="k"><span class="sw" style="background:var(--orange)"></span>Наличные</span><span class="v num">$114k</span></div>
+            <div class="li"><span class="k"><span class="sw" style="background:var(--navy2)"></span>Крипта</span><span class="v num">$59k</span></div>
+            <div class="li"><span class="k"><span class="sw" style="background:#007185"></span>Депозиты</span><span class="v num">$40k</span></div>
+            <div class="li"><span class="k"><span class="sw" style="background:#c7c9c9"></span>Акции</span><span class="v num">$35k</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="ttl">Динамика капитала</div>
+        <div class="spark">
+          <span style="height:44%"></span><span style="height:52%"></span><span style="height:48%"></span>
+          <span style="height:62%"></span><span style="height:57%"></span><span style="height:71%"></span>
+          <span style="height:68%"></span><span style="height:82%"></span><span style="height:90%"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card assets" style="margin-top:14px">
+      <div class="ttl">Активы (5)</div>
+      <div class="row"><div><span class="nm">Наличные</span><span class="meta">10 000 EUR · Минск</span></div><span class="num">$10 820</span></div>
+      <div class="row"><div><span class="nm">Криптовалюта</span><span class="meta">2 BTC · кошелёк</span></div><span class="num">$58 400</span></div>
+      <div class="row"><div><span class="nm">Депозит</span><span class="meta">1 000 GEL · Bank of Georgia · 9%</span></div><span class="num">$372</span></div>
+      <div class="row"><div><span class="nm">Акции</span><span class="meta">120 AAPL</span></div><span class="num">$28 200</span></div>
+      <div class="row"><div><span class="nm">Наличные</span><span class="meta">9 500 USD</span></div><span class="num">$9 500</span></div>
+    </div>
+  </div>
+
+  <p class="footer">Мокап R · «в стиле Amazon» — белый утилитарный e-commerce: тёмно-синий хедер с поиском, оранжевый smile-акцент, жёлтые pill-кнопки CTA, серые панели, тонкие бордеры, бирюзовые ссылки. Прагматично и привычно.</p>
+</div>
+</body>
+</html>

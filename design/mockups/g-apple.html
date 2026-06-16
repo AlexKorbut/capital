@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>КАПИТАЛЬ — Мокап G · Apple-стиль</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#fbfbfd; --surface:#ffffff; --surface2:#f5f5f7; --line:#e3e3e8;
+    --fg:#1d1d1f; --muted:#86868b; --blue:#0071e3; --blue-deep:#0060c0; --green:#34c759;
+    --radius:22px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display",Inter,system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;line-height:1.47;letter-spacing:-.01em}
+  .num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+  .wrap{max-width:1024px;margin:0 auto;padding:0 28px}
+  a{color:inherit;text-decoration:none}
+
+  nav{display:flex;align-items:center;justify-content:space-between;padding:20px 0;
+    position:sticky;top:0;z-index:10;background:rgba(251,251,253,.72);backdrop-filter:saturate(180%) blur(20px);
+    -webkit-backdrop-filter:saturate(180%) blur(20px)}
+  .logo{font-weight:600;font-size:19px;letter-spacing:-.02em}
+  .navbtns{display:flex;gap:8px;align-items:center}
+  .btn{height:42px;display:inline-flex;align-items:center;gap:8px;padding:0 20px;border-radius:980px;font-weight:500;font-size:14.5px;border:1px solid transparent;cursor:pointer;transition:.25s ease}
+  .btn-primary{background:var(--blue);color:#fff}
+  .btn-primary:hover{background:var(--blue-deep)}
+  .btn-ghost{color:var(--blue)}
+  .btn-ghost:hover{opacity:.7}
+  .btn-outline{border-color:var(--line);color:var(--fg);background:var(--surface)}
+  .btn-outline:hover{background:var(--surface2)}
+
+  .hero{padding:96px 0 64px;text-align:center}
+  .pill{display:inline-flex;align-items:center;gap:8px;font-size:15px;color:var(--blue);font-weight:500}
+  h1{font-size:clamp(44px,7vw,80px);line-height:1.05;letter-spacing:-.035em;font-weight:600;margin:18px auto 0;max-width:15ch}
+  .sub{color:var(--muted);font-size:clamp(19px,2.4vw,24px);max-width:34ch;margin:20px auto 0;font-weight:400;letter-spacing:-.01em}
+  .cta{display:flex;gap:18px;justify-content:center;margin-top:30px;flex-wrap:wrap;align-items:center}
+  .link{color:var(--blue);font-size:16px;font-weight:500}
+  .link:hover{text-decoration:underline}
+  .fineprint{color:var(--muted);font-size:13px;margin-top:18px}
+
+  .preview-label{text-align:center;color:var(--muted);font-size:13px;letter-spacing:.02em;margin:80px 0 22px;font-weight:500}
+  .board{background:var(--surface2);border-radius:32px;padding:24px}
+  .card{background:var(--surface);border:.5px solid var(--line);border-radius:var(--radius);padding:28px;box-shadow:0 2px 14px rgba(0,0,0,.04)}
+  .net .label{color:var(--muted);font-size:15px;font-weight:500}
+  .net .figure{font-size:clamp(48px,7.5vw,72px);font-weight:600;letter-spacing:-.04em;margin-top:6px;line-height:1}
+  .net .figure .cur{color:var(--muted);font-weight:500}
+  .net .delta{display:inline-flex;gap:6px;margin-top:14px;color:var(--green);font-size:15px;font-weight:500}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px}
+  @media(max-width:760px){.cols{grid-template-columns:1fr}}
+  .ttl{color:var(--muted);font-size:15px;font-weight:500;margin-bottom:20px}
+  .donut-row{display:flex;align-items:center;gap:24px}
+  .donut{width:124px;height:124px;border-radius:50%;
+    background:conic-gradient(var(--blue) 0 46%, var(--green) 46% 70%, #ff9f0a 70% 86%, #ff375f 86% 100%);
+    -webkit-mask:radial-gradient(circle 43px at 50% 50%,transparent 98%,#000 100%);
+            mask:radial-gradient(circle 43px at 50% 50%,transparent 98%,#000 100%)}
+  .legend{display:flex;flex-direction:column;gap:13px;font-size:15px;flex:1}
+  .legend .li{display:flex;align-items:center;justify-content:space-between}
+  .legend .k{display:flex;align-items:center;gap:10px;font-weight:500}
+  .sw{width:10px;height:10px;border-radius:50%}
+  .legend .v{color:var(--muted)}
+  .spark{height:120px;display:flex;align-items:flex-end;gap:9px;margin-top:6px}
+  .spark span{flex:1;background:linear-gradient(180deg,var(--blue),#5eb0ff);border-radius:6px}
+  .assets .row{display:flex;align-items:center;justify-content:space-between;padding:16px 0;border-top:.5px solid var(--line);font-size:15px}
+  .assets .row:first-of-type{border-top:0}
+  .assets .nm{font-weight:500}
+  .assets .meta{color:var(--muted);margin-left:8px;font-weight:400}
+  .footer{color:var(--muted);font-size:12.5px;text-align:center;padding:60px 0 44px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav>
+    <div class="logo">КАПИТАЛЬ</div>
+    <div class="navbtns">
+      <a class="btn btn-ghost">Войти</a>
+      <a class="btn btn-primary">Начать</a>
+    </div>
+  </nav>
+</div>
+
+<div class="wrap">
+  <section class="hero">
+    <span class="pill">Приватный трекер капитала</span>
+    <h1>Весь капитал.<br>В одном месте.</h1>
+    <p class="sub">Добавляйте активы голосом, текстом или фото. Остальное сделает AI.</p>
+    <div class="cta">
+      <a class="btn btn-primary">Начать бесплатно</a>
+      <a class="link">Узнать больше ›</a>
+    </div>
+    <p class="fineprint">Free навсегда · карта не нужна · данные шифруются</p>
+  </section>
+
+  <p class="preview-label">Ваш капитал — наглядно</p>
+  <div class="board">
+    <div class="card net">
+      <div class="label">Чистый капитал</div>
+      <div class="figure num"><span class="cur">$</span>248&thinsp;640</div>
+      <span class="delta">↗ +4,2% за месяц · +$9&thinsp;980</span>
+    </div>
+
+    <div class="cols">
+      <div class="card">
+        <div class="ttl">Структура по типам</div>
+        <div class="donut-row">
+          <div class="donut"></div>
+          <div class="legend">
+            <div class="li"><span class="k"><span class="sw" style="background:var(--blue)"></span>Наличные</span><span class="v num">$114k</span></div>
+            <div class="li"><span class="k"><span class="sw" style="background:var(--green)"></span>Крипта</span><span class="v num">$59k</span></div>
+            <div class="li"><span class="k"><span class="sw" style="background:#ff9f0a"></span>Депозиты</span><span class="v num">$40k</span></div>
+            <div class="li"><span class="k"><span class="sw" style="background:#ff375f"></span>Акции</span><span class="v num">$35k</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="ttl">Динамика капитала</div>
+        <div class="spark">
+          <span style="height:44%"></span><span style="height:52%"></span><span style="height:48%"></span>
+          <span style="height:62%"></span><span style="height:57%"></span><span style="height:71%"></span>
+          <span style="height:68%"></span><span style="height:82%"></span><span style="height:90%"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card assets" style="margin-top:18px">
+      <div class="ttl">Активы (5)</div>
+      <div class="row"><div><span class="nm">Наличные</span><span class="meta">10 000 EUR · Минск</span></div><span class="num">$10 820</span></div>
+      <div class="row"><div><span class="nm">Криптовалюта</span><span class="meta">2 BTC · кошелёк</span></div><span class="num">$58 400</span></div>
+      <div class="row"><div><span class="nm">Депозит</span><span class="meta">1 000 GEL · Bank of Georgia · 9%</span></div><span class="num">$372</span></div>
+      <div class="row"><div><span class="nm">Акции</span><span class="meta">120 AAPL</span></div><span class="num">$28 200</span></div>
+      <div class="row"><div><span class="nm">Наличные</span><span class="meta">9 500 USD</span></div><span class="num">$9 500</span></div>
+    </div>
+  </div>
+
+  <p class="footer">Мокап G · «Apple-стиль» — система SF/-apple-system, максимум воздуха, frosted-glass навигация, мягкие тени, крупные радиусы, спокойный синий-акцент. Apple Card / Wallet-вайб.</p>
+</div>
+</body>
+</html>

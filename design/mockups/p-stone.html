@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>КАПИТАЛЬ — Мокап P · Архитектурный камень</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#e7e2d6; --surface:#f2eee4; --surface2:#ece7da; --line:#d2cbba;
+    --fg:#24221c; --muted:#7a7568; --slate:#3c5060; --slate-deep:#2c3c49; --clay:#b06a44;
+    --radius:6px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--fg);font-family:Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased;line-height:1.55}
+  .serif{font-family:Spectral,Georgia,serif}
+  .num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+  .wrap{max-width:1000px;margin:0 auto;padding:0 30px}
+  a{color:inherit;text-decoration:none}
+
+  nav{display:flex;align-items:center;justify-content:space-between;padding:26px 0;border-bottom:1px solid var(--line)}
+  .logo{font-family:Spectral;font-weight:600;font-size:19px;letter-spacing:.14em;text-transform:uppercase}
+  .navbtns{display:flex;gap:14px;align-items:center}
+  .btn{height:44px;display:inline-flex;align-items:center;gap:8px;padding:0 22px;border-radius:var(--radius);font-weight:500;font-size:14px;border:1px solid transparent;cursor:pointer;transition:.2s;letter-spacing:.04em}
+  .btn-primary{background:var(--slate);color:#f2eee4}
+  .btn-primary:hover{background:var(--slate-deep)}
+  .btn-ghost{color:var(--muted)}
+  .btn-ghost:hover{color:var(--fg)}
+  .btn-outline{border-color:var(--line);color:var(--fg);background:var(--surface)}
+  .btn-outline:hover{border-color:var(--slate);color:var(--slate)}
+
+  .hero{padding:84px 0 56px;max-width:44ch}
+  .pill{display:inline-flex;align-items:center;gap:10px;font-size:12px;color:var(--slate);letter-spacing:.18em;text-transform:uppercase;border-bottom:1px solid var(--slate);padding-bottom:6px}
+  h1{font-family:Spectral;font-weight:500;font-size:clamp(44px,7vw,72px);line-height:1.06;letter-spacing:-.01em;margin:26px 0 0}
+  h1 .em{font-style:italic;color:var(--clay)}
+  .sub{color:var(--muted);font-size:18px;max-width:54ch;margin:24px 0 0}
+  .cta{display:flex;gap:14px;margin-top:34px;flex-wrap:wrap}
+  .fineprint{color:var(--muted);font-size:12.5px;margin-top:16px;letter-spacing:.04em}
+
+  .preview-label{color:var(--muted);font-size:11px;letter-spacing:.24em;text-transform:uppercase;margin:78px 0 20px}
+  .board{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:24px;box-shadow:0 30px 80px -56px rgba(36,34,28,.5)}
+  .card{background:var(--surface2);border:1px solid var(--line);border-radius:var(--radius);padding:26px}
+  .net .label{color:var(--muted);font-size:12px;letter-spacing:.16em;text-transform:uppercase}
+  .net .figure{font-family:Spectral;font-weight:500;font-size:clamp(48px,7.5vw,72px);letter-spacing:-.01em;margin-top:10px;line-height:1}
+  .net .figure .cur{color:var(--clay)}
+  .net .delta{display:inline-flex;gap:6px;margin-top:14px;color:var(--slate);font-size:13.5px;letter-spacing:.04em}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
+  @media(max-width:760px){.cols{grid-template-columns:1fr}}
+  .ttl{color:var(--muted);font-size:11px;letter-spacing:.16em;text-transform:uppercase;margin-bottom:20px}
+  .donut-row{display:flex;align-items:center;gap:22px}
+  .donut{width:122px;height:122px;border-radius:50%;
+    background:conic-gradient(var(--slate) 0 46%, var(--clay) 46% 70%, #a99e86 70% 86%, #cfc7b4 86% 100%);
+    -webkit-mask:radial-gradient(circle 41px at 50% 50%,transparent 98%,#000 100%);
+            mask:radial-gradient(circle 41px at 50% 50%,transparent 98%,#000 100%)}
+  .legend{display:flex;flex-direction:column;gap:12px;font-size:14px;flex:1}
+  .legend .li{display:flex;align-items:center;justify-content:space-between}
+  .legend .k{display:flex;align-items:center;gap:10px}
+  .sw{width:9px;height:9px;border-radius:50%}
+  .legend .v{color:var(--muted)}
+  .spark{height:118px;display:flex;align-items:flex-end;gap:8px;margin-top:4px}
+  .spark span{flex:1;background:linear-gradient(180deg,var(--slate),rgba(60,80,96,.08));border-radius:3px 3px 0 0}
+  .assets .row{display:flex;align-items:center;justify-content:space-between;padding:15px 0;border-top:1px solid var(--line);font-size:14.5px}
+  .assets .row:first-of-type{border-top:0}
+  .assets .nm{font-weight:600}
+  .assets .meta{color:var(--muted);margin-left:8px;font-weight:400}
+  .footer{color:var(--muted);font-size:12.5px;padding:56px 0 40px;letter-spacing:.02em}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav>
+    <div class="logo">Капиталь</div>
+    <div class="navbtns">
+      <a class="btn btn-ghost">Войти</a>
+      <a class="btn btn-primary">Начать бесплатно</a>
+    </div>
+  </nav>
+
+  <section class="hero">
+    <span class="pill">Приватный трекер капитала · AI</span>
+    <h1 class="serif">Капитал на<br><span class="em">фундаменте</span> ясности</h1>
+    <p class="sub">Добавьте активы голосом, текстом или фото — мы сведём их в любую валюту по курсам ЦБ и дадим персональные инсайты. Основательно, как камень.</p>
+    <div class="cta">
+      <a class="btn btn-primary">Начать бесплатно →</a>
+      <a class="btn btn-outline">У меня есть аккаунт</a>
+    </div>
+    <p class="fineprint">Free навсегда · карта не нужна · данные шифруются at-rest</p>
+  </section>
+
+  <p class="preview-label">Ваш капитал</p>
+  <div class="board">
+    <div class="card net">
+      <div class="label">Чистый капитал</div>
+      <div class="figure num"><span class="cur">$</span>248&thinsp;640</div>
+      <span class="delta">▲ +4,2% за месяц · +$9 980</span>
+    </div>
+
+    <div class="cols">
+      <div class="card">
+        <div class="ttl">Структура по типам</div>
+        <div class="donut-row">
+          <div class="donut"></div>
+          <div class="legend">
+            <div class="li"><span class="k"><span class="sw" style="background:var(--slate)"></span>Наличные</span><span class="v num">$114k</span></div>
+            <div class="li"><span class="k"><span class="sw" style="background:var(--clay)"></span>Крипта</span><span class="v num">$59k</span></div>
+            <div class="li"><span class="k"><span class="sw" style="background:#a99e86"></span>Депозиты</span><span class="v num">$40k</span></div>
+            <div class="li"><span class="k"><span class="sw" style="background:#cfc7b4"></span>Акции</span><span class="v num">$35k</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="ttl">Динамика капитала</div>
+        <div class="spark">
+          <span style="height:44%"></span><span style="height:52%"></span><span style="height:48%"></span>
+          <span style="height:62%"></span><span style="height:57%"></span><span style="height:71%"></span>
+          <span style="height:68%"></span><span style="height:82%"></span><span style="height:90%"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card assets" style="margin-top:16px">
+      <div class="ttl">Активы (5)</div>
+      <div class="row"><div><span class="nm">Наличные</span><span class="meta">10 000 EUR · Минск</span></div><span class="num">$10 820</span></div>
+      <div class="row"><div><span class="nm">Криптовалюта</span><span class="meta">2 BTC · кошелёк</span></div><span class="num">$58 400</span></div>
+      <div class="row"><div><span class="nm">Депозит</span><span class="meta">1 000 GEL · Bank of Georgia · 9%</span></div><span class="num">$372</span></div>
+      <div class="row"><div><span class="nm">Акции</span><span class="meta">120 AAPL</span></div><span class="num">$28 200</span></div>
+      <div class="row"><div><span class="nm">Наличные</span><span class="meta">9 500 USD</span></div><span class="num">$9 500</span></div>
+    </div>
+  </div>
+
+  <p class="footer">Мокап P · «Архитектурный камень» — тёплый известняк, чернильный текст, сериф Spectral с engraved-капителью, глубокий сланцевый (slate) акцент + терракота. Спокойная музейная основательность.</p>
+</div>
+</body>
+</html>

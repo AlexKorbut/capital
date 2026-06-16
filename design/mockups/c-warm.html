@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>КАПИТАЛЬ — Мокап C · Тёплый матовый минимал</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#13110f; --surface:#1a1714; --surface2:#201c18; --line:#2b2620;
+    --fg:#f0ebe4; --muted:#9a9085; --amber:#e0a16a; --amber-deep:#d08d4f; --sage:#a9b89a;
+    --radius:18px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--fg);font-family:"Instrument Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased;line-height:1.55}
+  .serif{font-family:Newsreader,Georgia,serif}
+  .num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+  .wrap{max-width:1000px;margin:0 auto;padding:0 28px}
+  a{color:inherit;text-decoration:none}
+
+  nav{display:flex;align-items:center;justify-content:space-between;padding:26px 0}
+  .logo{font-weight:600;font-size:18px;letter-spacing:.02em}
+  .navbtns{display:flex;gap:14px;align-items:center}
+  .btn{height:44px;display:inline-flex;align-items:center;gap:8px;padding:0 20px;border-radius:12px;font-weight:500;font-size:14.5px;border:1px solid transparent;cursor:pointer;transition:.2s}
+  .btn-primary{background:var(--amber);color:#241405}
+  .btn-primary:hover{background:var(--amber-deep)}
+  .btn-ghost{color:var(--muted)}
+  .btn-ghost:hover{color:var(--fg)}
+  .btn-outline{border-color:var(--line);color:var(--fg)}
+  .btn-outline:hover{background:var(--surface2)}
+
+  .hero{padding:90px 0 56px;max-width:42ch}
+  .pill{display:inline-flex;align-items:center;gap:9px;font-size:13px;color:var(--muted)}
+  .pill .dot{width:6px;height:6px;border-radius:50%;background:var(--sage)}
+  h1{font-family:Newsreader;font-weight:400;font-size:clamp(40px,6.5vw,66px);line-height:1.05;letter-spacing:-.01em;margin:22px 0 0}
+  h1 .em{font-style:italic;color:var(--amber)}
+  .sub{color:var(--muted);font-size:18px;margin:24px 0 0;max-width:54ch}
+  .cta{display:flex;gap:14px;margin-top:34px;flex-wrap:wrap}
+  .fineprint{color:var(--muted);font-size:13px;margin-top:16px}
+
+  .preview-label{color:var(--muted);font-size:12px;letter-spacing:.16em;text-transform:uppercase;margin:74px 0 20px}
+  .board{background:var(--surface);border:1px solid var(--line);border-radius:24px;padding:24px}
+  .card{background:var(--surface2);border:1px solid var(--line);border-radius:var(--radius);padding:26px}
+  .net .label{color:var(--muted);font-size:14px}
+  .net .figure{font-family:Newsreader;font-weight:400;font-size:clamp(44px,7vw,64px);letter-spacing:-.01em;margin-top:8px;line-height:1}
+  .net .figure .cur{color:var(--amber)}
+  .net .delta{display:inline-flex;gap:6px;margin-top:14px;color:var(--sage);font-size:14px}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px}
+  @media(max-width:760px){.cols{grid-template-columns:1fr}}
+  .ttl{color:var(--muted);font-size:14px;margin-bottom:18px}
+  .donut-row{display:flex;align-items:center;gap:22px}
+  .donut{width:124px;height:124px;border-radius:50%;
+    background:conic-gradient(var(--amber) 0 46%, var(--sage) 46% 70%, #7d8aa0 70% 86%, #b08a8a 86% 100%);
+    -webkit-mask:radial-gradient(circle 42px at 50% 50%,transparent 98%,#000 100%);
+            mask:radial-gradient(circle 42px at 50% 50%,transparent 98%,#000 100%)}
+  .legend{display:flex;flex-direction:column;gap:11px;font-size:14px;flex:1}
+  .legend .li{display:flex;align-items:center;justify-content:space-between}
+  .legend .k{display:flex;align-items:center;gap:10px}
+  .sw{width:9px;height:9px;border-radius:50%}
+  .legend .v{color:var(--muted)}
+  .spark{height:118px;display:flex;align-items:flex-end;gap:8px;margin-top:6px}
+  .spark span{flex:1;background:linear-gradient(180deg,var(--amber),rgba(224,161,106,.06));border-radius:8px 8px 0 0}
+  .assets .row{display:flex;align-items:center;justify-content:space-between;padding:14px 0;border-top:1px solid var(--line);font-size:14.5px}
+  .assets .row:first-of-type{border-top:0}
+  .assets .nm{font-weight:500}
+  .assets .meta{color:var(--muted);margin-left:8px;font-weight:400}
+  .footer{color:var(--muted);font-size:12.5px;padding:54px 0 40px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav>
+    <div class="logo">КАПИТАЛЬ</div>
+    <div class="navbtns">
+      <a class="btn btn-ghost">Войти</a>
+      <a class="btn btn-primary">Начать бесплатно</a>
+    </div>
+  </nav>
+
+  <section class="hero">
+    <span class="pill"><span class="dot"></span> Приватный трекер капитала с AI-советником</span>
+    <h1 class="serif">Спокойный взгляд<br>на <span class="em">весь капитал</span></h1>
+    <p class="sub">Добавьте активы текстом, голосом или фото — мы сведём их в любую валюту по курсам ЦБ и подскажем персональные инсайты. Тихо, приватно, без лишнего шума.</p>
+    <div class="cta">
+      <a class="btn btn-primary">Начать бесплатно</a>
+      <a class="btn btn-outline">У меня есть аккаунт</a>
+    </div>
+    <p class="fineprint">Free навсегда · карта не нужна · данные шифруются at-rest</p>
+  </section>
+
+  <p class="preview-label">Ваш капитал</p>
+  <div class="board">
+    <div class="card net">
+      <div class="label">Чистый капитал</div>
+      <div class="figure num"><span class="cur">$</span>248&thinsp;640</div>
+      <span class="delta">↑ +4.2% за месяц · +$9&thinsp;980</span>
+    </div>
+
+    <div class="cols">
+      <div class="card">
+        <div class="ttl">Структура по типам</div>
+        <div class="donut-row">
+          <div class="donut"></div>
+          <div class="legend">
+            <div class="li"><span class="k"><span class="sw" style="background:var(--amber)"></span>Наличные</span><span class="v num">$114k</span></div>
+            <div class="li"><span class="k"><span class="sw" style="background:var(--sage)"></span>Крипта</span><span class="v num">$59k</span></div>
+            <div class="li"><span class="k"><span class="sw" style="background:#7d8aa0"></span>Депозиты</span><span class="v num">$40k</span></div>
+            <div class="li"><span class="k"><span class="sw" style="background:#b08a8a"></span>Акции</span><span class="v num">$35k</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="ttl">Динамика капитала</div>
+        <div class="spark">
+          <span style="height:44%"></span><span style="height:52%"></span><span style="height:48%"></span>
+          <span style="height:62%"></span><span style="height:57%"></span><span style="height:71%"></span>
+          <span style="height:68%"></span><span style="height:82%"></span><span style="height:90%"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card assets" style="margin-top:18px">
+      <div class="ttl">Активы (5)</div>
+      <div class="row"><div><span class="nm">Наличные</span><span class="meta">10 000 EUR · Минск</span></div><span class="num">$10 820</span></div>
+      <div class="row"><div><span class="nm">Криптовалюта</span><span class="meta">2 BTC · кошелёк</span></div><span class="num">$58 400</span></div>
+      <div class="row"><div><span class="nm">Депозит</span><span class="meta">1 000 GEL · Bank of Georgia · 9%</span></div><span class="num">$372</span></div>
+      <div class="row"><div><span class="nm">Акции</span><span class="meta">120 AAPL</span></div><span class="num">$28 200</span></div>
+      <div class="row"><div><span class="nm">Наличные</span><span class="meta">9 500 USD</span></div><span class="num">$9 500</span></div>
+    </div>
+  </div>
+
+  <p class="footer">Мокап C · «Тёплый матовый минимал» — off-black с тёплым нейтральным, сдержанный янтарный акцент, сериф Newsreader, воздух и типографика. Linear/Things-like.</p>
+</div>
+</body>
+</html>

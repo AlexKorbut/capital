@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>КАПИТАЛЬ — Мокап T · в стиле Binance</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0b0e11; --surface:#181a20; --surface2:#1e2026; --line:#2b3139;
+    --fg:#eaecef; --muted:#848e9c; --yellow:#fcd535; --yellow-h:#f0b90b; --up:#0ecb81; --down:#f6465d;
+    --radius:8px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--fg);font-family:Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased;line-height:1.45}
+  .mono{font-family:"IBM Plex Mono",monospace}
+  .num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+  .wrap{max-width:1100px;margin:0 auto;padding:0 24px}
+  a{color:inherit;text-decoration:none}
+
+  .ticker{border-bottom:1px solid var(--line);background:#0b0e11;font-family:"IBM Plex Mono";font-size:12.5px;color:var(--muted);overflow:hidden}
+  .ticker .wrap{display:flex;gap:26px;padding:9px 24px;white-space:nowrap}
+  .ticker b{color:var(--fg);font-weight:500}
+  .ticker .up{color:var(--up)}.ticker .down{color:var(--down)}
+
+  nav{display:flex;align-items:center;justify-content:space-between;padding:16px 0}
+  .logo{font-weight:800;font-size:20px;letter-spacing:-.01em;display:flex;align-items:center;gap:9px}
+  .logo .mark{width:20px;height:20px;background:var(--yellow);transform:rotate(45deg);border-radius:3px}
+  .navlinks{display:flex;gap:22px;margin-left:24px}
+  .navlinks a{font-size:14px;color:var(--muted);font-weight:500}
+  .navlinks a:hover{color:var(--yellow)}
+  .navleft{display:flex;align-items:center}
+  .navbtns{display:flex;gap:10px;align-items:center}
+  .btn{height:40px;display:inline-flex;align-items:center;gap:8px;padding:0 18px;border-radius:var(--radius);font-weight:600;font-size:14px;border:1px solid transparent;cursor:pointer;transition:.14s}
+  .btn-primary{background:var(--yellow);color:#0b0e11}
+  .btn-primary:hover{background:var(--yellow-h)}
+  .btn-ghost{color:var(--fg)}
+  .btn-ghost:hover{color:var(--yellow)}
+  .btn-outline{border-color:var(--line);color:var(--fg)}
+  .btn-outline:hover{border-color:var(--yellow);color:var(--yellow)}
+
+  .hero{padding:56px 0 44px;display:grid;grid-template-columns:1.2fr 1fr;gap:34px;align-items:center}
+  @media(max-width:760px){.hero{grid-template-columns:1fr}}
+  .pill{display:inline-flex;align-items:center;gap:9px;border:1px solid var(--line);background:var(--surface);font-size:12px;padding:6px 12px;border-radius:6px;color:var(--yellow);font-family:"IBM Plex Mono"}
+  h1{font-size:clamp(38px,6vw,64px);line-height:1.04;letter-spacing:-.025em;font-weight:700;margin:18px 0 0}
+  h1 .mark2{color:var(--yellow)}
+  .sub{color:var(--muted);font-size:17px;max-width:48ch;margin:18px 0 0}
+  .cta{display:flex;gap:12px;margin-top:26px;flex-wrap:wrap}
+  .fineprint{font-family:"IBM Plex Mono";color:var(--muted);font-size:12px;margin-top:14px}
+  .heroCard{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:20px}
+  .heroCard .lbl{font-size:12.5px;color:var(--muted)}
+  .heroCard .big{font-size:34px;font-weight:700;margin-top:4px;font-variant-numeric:tabular-nums}
+  .heroCard .big .cur{color:var(--yellow)}
+  .heroCard .pos{color:var(--up);font-size:13.5px;font-weight:600;margin-top:6px;font-family:"IBM Plex Mono"}
+  .heroChips{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+  .chip{font-family:"IBM Plex Mono";font-size:11.5px;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:5px 9px}
+
+  .preview-label{font-family:"IBM Plex Mono";font-size:12px;letter-spacing:.06em;text-transform:uppercase;margin:40px 0 14px;color:var(--muted)}
+  .board{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px}
+  .card{background:var(--surface2);border:1px solid var(--line);border-radius:var(--radius);padding:22px}
+  .net{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px}
+  .net .label{color:var(--muted);font-size:13px}
+  .net .figure{font-size:clamp(38px,6vw,58px);font-weight:700;letter-spacing:-.02em;margin-top:4px;line-height:1;font-variant-numeric:tabular-nums}
+  .net .figure .cur{color:var(--yellow)}
+  .net .delta{color:#0b0e11;background:var(--up);font-size:13px;font-weight:700;padding:5px 11px;border-radius:6px;font-family:"IBM Plex Mono"}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
+  @media(max-width:760px){.cols{grid-template-columns:1fr}}
+  .ttl{color:var(--muted);font-size:12px;margin-bottom:18px;font-family:"IBM Plex Mono";text-transform:uppercase;letter-spacing:.04em}
+  .donut-row{display:flex;align-items:center;gap:18px}
+  .donut{width:124px;height:124px;border-radius:50%;
+    background:conic-gradient(var(--yellow) 0 46%, #0ecb81 46% 70%, #648fff 70% 86%, #3b4049 86% 100%);
+    -webkit-mask:radial-gradient(circle 42px at 50% 50%,transparent 98%,#000 100%);
+            mask:radial-gradient(circle 42px at 50% 50%,transparent 98%,#000 100%)}
+  .legend{display:flex;flex-direction:column;gap:10px;font-size:13.5px;flex:1}
+  .legend .li{display:flex;align-items:center;justify-content:space-between}
+  .legend .k{display:flex;align-items:center;gap:9px}
+  .sw{width:10px;height:10px;border-radius:2px}
+  .legend .v{color:var(--muted);font-family:"IBM Plex Mono"}
+  .spark{height:120px;display:flex;align-items:flex-end;gap:6px;margin-top:4px}
+  .spark span{flex:1;background:linear-gradient(180deg,#0ecb81,rgba(14,203,129,.06));border-radius:2px 2px 0 0}
+  .spark span:last-child{background:linear-gradient(180deg,var(--yellow),rgba(252,213,53,.06))}
+  .assets .row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-top:1px solid var(--line);font-size:14px}
+  .assets .row:first-of-type{border-top:0}
+  .assets .nm{font-weight:600}
+  .assets .meta{color:var(--muted);margin-left:8px;font-weight:400;font-family:"IBM Plex Mono";font-size:12px}
+  .assets .row .num{color:var(--fg);font-weight:500}
+  .footer{color:var(--muted);font-size:12px;padding:40px 0;border-top:1px solid var(--line);margin-top:30px}
+</style>
+</head>
+<body>
+<div class="ticker"><div class="wrap">
+  <span>BTC/USD <b>$29 200</b> <span class="up">+1,8%</span></span>
+  <span>EUR/USD <b>1,082</b> <span class="down">−0,2%</span></span>
+  <span>GEL/USD <b>0,372</b> <span class="up">+0,1%</span></span>
+  <span>AAPL <b>$235,00</b> <span class="up">+0,9%</span></span>
+  <span>Net Worth <b>$248 640</b> <span class="up">+4,2%</span></span>
+</div></div>
+
+<div class="wrap">
+  <nav>
+    <div class="navleft">
+      <div class="logo"><span class="mark"></span> КАПИТАЛЬ</div>
+      <div class="navlinks"><a>Портфель</a><a>Рынки</a><a>Инсайты</a><a>Сценарии</a></div>
+    </div>
+    <div class="navbtns">
+      <a class="btn btn-ghost">Войти</a>
+      <a class="btn btn-primary">Начать бесплатно</a>
+    </div>
+  </nav>
+
+  <section class="hero">
+    <div>
+      <span class="pill">11 AI-агентов · курсы ЦБ · 24/7</span>
+      <h1>Капитал на <span class="mark2">скорости биржи</span></h1>
+      <p class="sub">Текст, голос, фото, Excel — добавляйте активы как удобно. Сведём в любую валюту по курсам ЦБ и подсветим персональные инсайты.</p>
+      <div class="cta">
+        <a class="btn btn-primary">Начать бесплатно</a>
+        <a class="btn btn-outline">Войти</a>
+      </div>
+      <p class="fineprint">Free навсегда · карта не нужна · AES-256</p>
+    </div>
+    <div class="heroCard">
+      <div class="lbl">Чистый капитал</div>
+      <div class="big num"><span class="cur">$</span>248 640</div>
+      <div class="pos">▲ +4,2% / 30d · +$9 980</div>
+      <div class="heroChips"><span class="chip">FX · 1ч</span><span class="chip">Крипта · 5м</span><span class="chip">5 активов</span><span class="chip">4 валюты</span></div>
+    </div>
+  </section>
+
+  <p class="preview-label">Дашборд</p>
+  <div class="board">
+    <div class="card net">
+      <div>
+        <div class="label">Чистый капитал</div>
+        <div class="figure num"><span class="cur">$</span>248 640</div>
+      </div>
+      <div class="delta">▲ +4,2% / мес</div>
+    </div>
+
+    <div class="cols">
+      <div class="card">
+        <div class="ttl">Структура по типам</div>
+        <div class="donut-row">
+          <div class="donut"></div>
+          <div class="legend">
+            <div class="li"><span class="k"><span class="sw" style="background:var(--yellow)"></span>Наличные</span><span class="v num">$114k</span></div>
+            <div class="li"><span class="k"><span class="sw" style="background:#0ecb81"></span>Крипта</span><span class="v num">$59k</span></div>
+            <div class="li"><span class="k"><span class="sw" style="background:#648fff"></span>Депозиты</span><span class="v num">$40k</span></div>
+            <div class="li"><span class="k"><span class="sw" style="background:#3b4049"></span>Акции</span><span class="v num">$35k</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="ttl">Динамика капитала</div>
+        <div class="spark">
+          <span style="height:44%"></span><span style="height:52%"></span><span style="height:48%"></span>
+          <span style="height:62%"></span><span style="height:57%"></span><span style="height:71%"></span>
+          <span style="height:68%"></span><span style="height:82%"></span><span style="height:90%"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card assets" style="margin-top:14px">
+      <div class="ttl">Активы (5)</div>
+      <div class="row"><div><span class="nm">Наличные</span><span class="meta">10 000 EUR · Минск</span></div><span class="num">$10 820</span></div>
+      <div class="row"><div><span class="nm">Криптовалюта</span><span class="meta">2 BTC · кошелёк</span></div><span class="num">$58 400</span></div>
+      <div class="row"><div><span class="nm">Депозит</span><span class="meta">1 000 GEL · Bank of Georgia · 9%</span></div><span class="num">$372</span></div>
+      <div class="row"><div><span class="nm">Акции</span><span class="meta">120 AAPL</span></div><span class="num">$28 200</span></div>
+      <div class="row"><div><span class="nm">Наличные</span><span class="meta">9 500 USD</span></div><span class="num">$9 500</span></div>
+    </div>
+  </div>
+
+  <p class="footer">Мокап T · «в стиле Binance» — тёмный биржевой UI, фирменный жёлтый #FCD535, бегущий тикер, up/down зелёный-красный, моноширинные котировки, data-dense чипы. Крипто-трейдинг вайб.</p>
+</div>
+</body>
+</html>
