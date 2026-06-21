@@ -26,7 +26,12 @@ from services import scenario as scenario_service
 
 
 async def _load_base_assets(state: ScenarioState) -> list:
-    """Use preset base_assets/assets if present, else load latest confirmed snapshot."""
+    """Use preset base_assets/assets if present, else load a confirmed snapshot.
+
+    When `base_snapshot_id` is provided it loads that specific snapshot (scoped to
+    the user so a foreign id is ignored); otherwise it falls back to the latest
+    confirmed snapshot.
+    """
     preset = state.get("base_assets") or state.get("assets")
     if preset:
         return list(preset)
@@ -37,12 +42,25 @@ async def _load_base_assets(state: ScenarioState) -> list:
 
     uid = uuid.UUID(str(user_id))
     async with SessionLocal() as s:
-        snap = await s.scalar(
-            select(Snapshot)
-            .where(Snapshot.user_id == uid, Snapshot.is_confirmed.is_(True))
-            .order_by(Snapshot.created_at.desc())
-            .limit(1)
+        query = select(Snapshot).where(
+            Snapshot.user_id == uid, Snapshot.is_confirmed.is_(True)
         )
+
+        base_snapshot_id = state.get("base_snapshot_id")
+        if base_snapshot_id:
+            try:
+                sid = uuid.UUID(str(base_snapshot_id))
+            except (ValueError, AttributeError, TypeError):
+                sid = None
+            if sid is not None:
+                # Scope by user_id too — ignore a snapshot that isn't the caller's.
+                query = query.where(Snapshot.id == sid)
+            else:
+                query = query.order_by(Snapshot.created_at.desc())
+        else:
+            query = query.order_by(Snapshot.created_at.desc())
+
+        snap = await s.scalar(query.limit(1))
         if snap is None:
             return []
         rows = list(await s.scalars(select(Asset).where(Asset.snapshot_id == snap.id)))

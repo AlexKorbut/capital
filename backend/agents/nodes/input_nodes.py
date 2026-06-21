@@ -55,7 +55,10 @@ async def transcribe(state: InputState) -> dict[str, Any]:
             "trace": ["transcribe: no audio, passthrough"],
         }
 
-    if not settings.openai_api_key:
+    # In demo mode get_transcriber() returns the keyless DemoTranscriber, so
+    # voice input stays testable without a key. Only error out when we're NOT in
+    # demo mode and no STT key is configured.
+    if not settings.openai_api_key and not settings.is_demo:
         return {
             "error": "Транскрипция недоступна: не настроен STT-ключ.",
             "trace": ["transcribe: no STT key"],

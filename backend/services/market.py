@@ -17,7 +17,7 @@ gracefully — the asset is saved without a USD value rather than crashing).
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -202,6 +202,10 @@ async def _persist_fx(ccy: str, rate: Decimal, source: str) -> None:
         await s.commit()
 
 
+# Stored FX is only trusted as a fallback if refreshed within this window.
+_FX_FALLBACK_MAX_AGE = timedelta(days=7)
+
+
 async def _fallback_fx(ccy: str) -> Decimal | None:
     async with SessionLocal() as s:
         row = await s.scalar(
@@ -209,7 +213,16 @@ async def _fallback_fx(ccy: str) -> Decimal | None:
                 ExchangeRate.from_currency == ccy, ExchangeRate.to_currency == "USD"
             )
         )
-        return row.rate if row else None
+    if row is None or row.rate is None or row.rate <= 0:
+        return None
+    fetched = row.fetched_at
+    if fetched is None:
+        return None
+    if fetched.tzinfo is None:
+        fetched = fetched.replace(tzinfo=timezone.utc)
+    if datetime.now(timezone.utc) - fetched > _FX_FALLBACK_MAX_AGE:
+        return None
+    return row.rate
 
 
 async def _persist_crypto(symbol: str, price: Decimal, source: str) -> None:
@@ -346,12 +359,17 @@ async def usd_price_for_stock(ticker: str) -> Decimal | None:
         return cached
 
     price: Decimal | None = None
+    # Each provider gets its own try so an Alpha Vantage failure still lets
+    # Finnhub run before we fall through to the DB/demo fallback.
     try:
         price = await _fetch_stock_alphavantage(ticker)
-        if price is None or price <= 0:
-            price = await _fetch_stock_finnhub(ticker)
     except httpx.HTTPError as e:
-        logger.warning("Stock fetch failed for %s: %s", ticker, e)
+        logger.warning("Stock fetch (Alpha Vantage) failed for %s: %s", ticker, e)
+    if price is None or price <= 0:
+        try:
+            price = await _fetch_stock_finnhub(ticker)
+        except httpx.HTTPError as e:
+            logger.warning("Stock fetch (Finnhub) failed for %s: %s", ticker, e)
 
     if price and price > 0:
         await cache.set(cache_key, price, _STOCK_TTL)

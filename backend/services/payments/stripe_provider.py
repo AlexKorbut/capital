@@ -89,6 +89,9 @@ class StripeProvider:
         payload: bytes,
         headers: dict[str, str],
     ) -> SubscriptionUpdate:
+        if not settings.stripe_webhook_secret and not settings.is_demo:
+            # Fail closed: never accept an unverifiable webhook in a real deploy.
+            raise ValueError("Stripe webhook secret not configured")
         sig = headers.get("stripe-signature") or headers.get("Stripe-Signature")
         event = stripe.Webhook.construct_event(
             payload=payload,
@@ -135,9 +138,12 @@ class StripeProvider:
 
         if etype == "customer.subscription.updated":
             meta = obj.get("metadata") or {}
+            # past_due/unpaid: payment failed — stop extending and let the paid
+            # window lapse at period end (soft cancel) rather than renew.
             cancel = bool(obj.get("cancel_at_period_end")) or obj.get("status") in (
                 "canceled",
                 "unpaid",
+                "past_due",
                 "incomplete_expired",
             )
             return SubscriptionUpdate(
@@ -165,6 +171,26 @@ class StripeProvider:
                 stripe_customer_id=obj.get("customer"),
                 raw={"type": etype},
             )
+
+        if etype == "charge.refunded":
+            # A full refund (incl. chargeback resolution) revokes paid access.
+            fully_refunded = obj.get("refunded") is True or (
+                obj.get("amount_refunded")
+                and obj.get("amount")
+                and int(obj["amount_refunded"]) >= int(obj["amount"])
+            )
+            if fully_refunded:
+                return SubscriptionUpdate(
+                    user_id=(obj.get("metadata") or {}).get("user_id"),
+                    status="cancelled",
+                    plan="free",
+                    expires_at=None,
+                    event_type="refunded",
+                    provider=self.name,
+                    provider_ref=provider_ref,
+                    stripe_customer_id=obj.get("customer"),
+                    raw={"type": etype},
+                )
 
         return SubscriptionUpdate(
             user_id=None, status="ignored", provider=self.name, provider_ref=provider_ref

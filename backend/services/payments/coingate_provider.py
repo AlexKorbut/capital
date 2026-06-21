@@ -90,20 +90,26 @@ class CoinGateProvider:
             ).hexdigest()
             if not sig or not hmac.compare_digest(expected, sig):
                 raise ValueError("Invalid CoinGate signature")
+        elif not settings.is_demo:
+            # Fail closed: never trust an unsigned callback in a real deploy.
+            raise ValueError("CoinGate webhook secret not configured")
 
         data = _form_or_json(payload)
         status_raw = (data.get("status") or "").lower()
         order_id = data.get("order_id") or ""
         token = data.get("token")  # CoinGate order token, unique → idempotency
 
-        user_id, plan, months = _split_order_id(order_id)
+        user_id, plan, _months = _split_order_id(order_id)
 
         if status_raw == "paid":
-            expires = _now() + timedelta(days=30 * max(months, 1))
+            # The granted period is fixed by server config, NOT by the order_id
+            # (which is attacker-influenceable on a forged/replayed callback).
+            months = max(1, settings.crypto_pro_months)
+            expires = _now() + timedelta(days=30 * months)
             return SubscriptionUpdate(
                 user_id=user_id,
                 status="active",
-                plan=plan or "pro",
+                plan=plan if plan in ("pro", "business") else "pro",
                 expires_at=expires,
                 event_type="created",
                 provider=self.name,

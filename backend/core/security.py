@@ -58,7 +58,10 @@ def create_refresh_token(subject: str, token_version: int = 0) -> str:
 def decode_token(token: str, expected_type: TokenType | None = None) -> dict[str, Any]:
     """Decode and validate a JWT. Raises JWTError on failure/type mismatch."""
     payload = jwt.decode(
-        token, settings.jwt_secret, algorithms=[settings.jwt_algorithm]
+        token,
+        settings.jwt_secret,
+        algorithms=[settings.jwt_algorithm],
+        options={"require": ["exp"]},  # reject tokens that never expire
     )
     if expected_type and payload.get("type") != expected_type:
         raise JWTError(f"Expected {expected_type} token, got {payload.get('type')}")
@@ -66,11 +69,15 @@ def decode_token(token: str, expected_type: TokenType | None = None) -> dict[str
 
 
 # --- Purpose-scoped tokens (email verification / password reset) ---------
-def create_email_token(subject: str, purpose: str, expires: timedelta) -> str:
+def create_email_token(
+    subject: str, purpose: str, expires: timedelta, token_version: int | None = None
+) -> str:
     """Signed, short-lived token carrying a ``purpose`` claim.
 
     Distinct from access/refresh tokens: it can't be used as a bearer token
-    (``type`` is unset) and is bound to a single purpose string.
+    (``type`` is unset) and is bound to a single purpose string. When
+    ``token_version`` is supplied it is embedded as ``tv`` so the token can be
+    invalidated (single-use) by bumping the user's version on consumption.
     """
     now = datetime.now(timezone.utc)
     payload: dict[str, Any] = {
@@ -80,20 +87,29 @@ def create_email_token(subject: str, purpose: str, expires: timedelta) -> str:
         "exp": now + expires,
         "jti": uuid.uuid4().hex,
     }
+    if token_version is not None:
+        payload["tv"] = token_version
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+
+
+def decode_email_token_payload(token: str, purpose: str) -> dict[str, Any]:
+    """Validate a purpose-scoped token and return its full payload."""
+    payload = jwt.decode(
+        token,
+        settings.jwt_secret,
+        algorithms=[settings.jwt_algorithm],
+        options={"require": ["exp"]},
+    )
+    if payload.get("purpose") != purpose:
+        raise JWTError("Token purpose mismatch")
+    if not payload.get("sub"):
+        raise JWTError("Token missing subject")
+    return payload
 
 
 def decode_email_token(token: str, purpose: str) -> str:
     """Validate a purpose-scoped token and return its subject. Raises JWTError."""
-    payload = jwt.decode(
-        token, settings.jwt_secret, algorithms=[settings.jwt_algorithm]
-    )
-    if payload.get("purpose") != purpose:
-        raise JWTError("Token purpose mismatch")
-    sub = payload.get("sub")
-    if not sub:
-        raise JWTError("Token missing subject")
-    return str(sub)
+    return str(decode_email_token_payload(token, purpose)["sub"])
 
 
 def create_verification_token(subject: str) -> str:
@@ -102,7 +118,10 @@ def create_verification_token(subject: str) -> str:
     )
 
 
-def create_password_reset_token(subject: str) -> str:
+def create_password_reset_token(subject: str, token_version: int = 0) -> str:
     return create_email_token(
-        subject, "password_reset", timedelta(minutes=settings.reset_token_ttl_min)
+        subject,
+        "password_reset",
+        timedelta(minutes=settings.reset_token_ttl_min),
+        token_version=token_version,
     )

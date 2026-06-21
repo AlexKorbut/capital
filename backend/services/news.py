@@ -13,6 +13,7 @@ So the advisor pipeline never blocks on news.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 import httpx
@@ -40,6 +41,19 @@ class RankedNews(BaseModel):
     items: list[RankedHeadline] = Field(default_factory=list)
 
 
+# Terms flow into the NEWS_RANK system prompt, so they must be sanitized to a
+# safe charset to prevent prompt injection via user-controlled country/currency.
+_SAFE_TERM_RE = re.compile(r"[^A-Za-z0-9 \-]")
+_MAX_TERM_LEN = 32
+
+
+def _safe_term(value: str | None) -> str | None:
+    if not value:
+        return None
+    cleaned = _SAFE_TERM_RE.sub("", str(value)).strip()[:_MAX_TERM_LEN].strip()
+    return cleaned or None
+
+
 def _portfolio_terms(assets: list[AssetItem]) -> list[str]:
     terms: set[str] = set()
     for a in assets:
@@ -49,7 +63,7 @@ def _portfolio_terms(assets: list[AssetItem]) -> list[str]:
             terms.add(a.country)
         if a.currency and a.asset_type != "crypto":
             terms.add(a.currency)
-    return sorted(terms)
+    return sorted(t for t in (_safe_term(t) for t in terms) if t)
 
 
 async def _fetch_newsapi(terms: list[str]) -> list[dict[str, Any]]:

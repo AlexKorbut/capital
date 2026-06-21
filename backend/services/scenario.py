@@ -114,13 +114,15 @@ def _matches(asset: AssetItem, target: str | None, asset_type: str | None) -> bo
     """Loose match of an existing asset by symbol/currency/type."""
     if target:
         t = target.strip().lower()
+        # Symbol/currency/ticker/type must match EXACTLY (case-insensitive) so a
+        # target like "USD" never matches a "USDT" asset and short targets don't
+        # over-match the wrong asset.
         for field in (asset.symbol, asset.currency, asset.ticker, asset.asset_type, asset.location):
             if field and t == str(field).lower():
                 return True
-        # substring fallback (e.g. "биткоин" vs symbol BTC handled by LLM target)
-        for field in (asset.symbol, asset.currency, asset.location):
-            if field and (t in str(field).lower() or str(field).lower() in t):
-                return True
+        # Looser contains-match only for free-text location.
+        if asset.location and (t in str(asset.location).lower() or str(asset.location).lower() in t):
+            return True
         return False
     if asset_type and asset_type != "other":
         return asset.asset_type == asset_type

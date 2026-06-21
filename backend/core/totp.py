@@ -34,18 +34,29 @@ def _hotp(secret_b32: str, counter: int, digits: int = _DIGITS) -> str:
     return str(code % (10 ** digits)).zfill(digits)
 
 
-def verify_totp(secret: str, code: str, window: int = 1, t: float | None = None) -> bool:
-    """True if ``code`` matches the secret within ±``window`` 30s steps."""
+def verify_totp_step(
+    secret: str, code: str, window: int = 1, t: float | None = None
+) -> int | None:
+    """Return the matched 30s counter (step) if ``code`` is valid, else None.
+
+    Callers persist the returned step to block replay: a code can be presented
+    only once because any step <= the last consumed one is rejected.
+    """
     if not secret or not code:
-        return False
+        return None
     code = code.strip().replace(" ", "")
     if not code.isdigit():
-        return False
+        return None
     counter = int((t if t is not None else time.time()) // _PERIOD)
-    return any(
-        hmac.compare_digest(_hotp(secret, counter + off), code)
-        for off in range(-window, window + 1)
-    )
+    for off in range(-window, window + 1):
+        if hmac.compare_digest(_hotp(secret, counter + off), code):
+            return counter + off
+    return None
+
+
+def verify_totp(secret: str, code: str, window: int = 1, t: float | None = None) -> bool:
+    """True if ``code`` matches the secret within ±``window`` 30s steps."""
+    return verify_totp_step(secret, code, window=window, t=t) is not None
 
 
 def provisioning_uri(secret: str, account: str, issuer: str = _ISSUER) -> str:

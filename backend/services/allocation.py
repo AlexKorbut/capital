@@ -43,12 +43,18 @@ async def compute_allocation(db: AsyncSession, user: User) -> dict:
     if snap is not None:
         data = await portfolio_read.current_portfolio(db, user.id)
         by_type = (data or {}).get("breakdown", {}).get("by_type", [])
-        total = sum(Decimal(e["usd_value"]) for e in by_type if e.get("usd_value"))
+        # Use abs() so debts (negative usd_value) don't inflate other types
+        # above 100% or yield negative shares; the signed value stays for display.
+        total = sum(
+            abs(Decimal(e["usd_value"]))
+            for e in by_type
+            if e.get("usd_value") is not None and Decimal(e["usd_value"]) != 0
+        )
         if total and total > 0:
             for e in by_type:
-                if e.get("usd_value"):
+                if e.get("usd_value") is not None and Decimal(e["usd_value"]) != 0:
                     current_pct[e["key"]] = (
-                        Decimal(e["usd_value"]) / total * Decimal(100)
+                        abs(Decimal(e["usd_value"])) / total * Decimal(100)
                     ).quantize(Decimal("0.1"))
 
     keys = sorted(set(targets) | set(current_pct), key=lambda k: _TYPES.index(k) if k in _TYPES else 99)

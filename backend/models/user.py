@@ -4,7 +4,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, Integer, String, func
+from sqlalchemy import JSON, BigInteger, Boolean, DateTime, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from core.db import Base
@@ -37,6 +37,9 @@ class User(Base):
     # live (hashed) in `settings["totp_recovery"]`.
     totp_secret: Mapped[str | None] = mapped_column(String(255), nullable=True)
     totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    # Highest TOTP 30s step already consumed — blocks replay of a code within
+    # its validity window (a used/older code can't be presented again).
+    totp_last_used_step: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     # Bumped to invalidate all previously-issued tokens ("log out everywhere").
     token_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(

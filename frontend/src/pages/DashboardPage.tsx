@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {
@@ -49,7 +50,8 @@ function signedUsd(value: string | null | undefined): string {
     n.toLocaleString("en-US", {
       style: "currency",
       currency: "USD",
-      maximumFractionDigits: 0,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     })
   );
 }
@@ -62,6 +64,8 @@ function changeClass(value: string | null | undefined): string {
 }
 
 // Format a USD amount in the user's base currency (USD stays canonical on the wire).
+// When usdPerBase is not a usable rate (not finite or <= 0), fall back to showing
+// the raw USD value labelled as USD rather than silently treating the rate as 1.
 function fmtBase(
   usdValue: string | number | null | undefined,
   baseCcy: string,
@@ -70,15 +74,21 @@ function fmtBase(
   if (usdValue == null) return "—";
   const n = Number(usdValue);
   if (Number.isNaN(n)) return "—";
-  const inBase = usdPerBase > 0 ? n / usdPerBase : n;
+  const rateUsable = Number.isFinite(usdPerBase) && usdPerBase > 0;
+  const inBase = rateUsable ? n / usdPerBase : n;
+  const ccy = rateUsable ? baseCcy || "USD" : "USD";
   try {
     return inBase.toLocaleString("ru-RU", {
       style: "currency",
-      currency: baseCcy || "USD",
-      maximumFractionDigits: 0,
+      currency: ccy,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     });
   } catch {
-    return `${Math.round(inBase).toLocaleString("ru-RU")} ${baseCcy}`;
+    return `${inBase.toLocaleString("ru-RU", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })} ${ccy}`;
   }
 }
 
@@ -86,8 +96,20 @@ export function DashboardPage() {
   const t = useT();
   const labels = useAssetLabels();
   const navigate = useNavigate();
-  const { user, clear } = useAuth();
-  useQuery({ queryKey: ["me"], queryFn: fetchMe, initialData: user ?? undefined });
+  const { user, setUser, clear } = useAuth();
+  const meQuery = useQuery({
+    queryKey: ["me"],
+    queryFn: fetchMe,
+    initialData: user ?? undefined,
+  });
+  // Keep the persisted auth store fresh (email_verified, plan, base currency)
+  // when the server returns updated data. Guarded so it can't loop.
+  useEffect(() => {
+    const me = meQuery.data;
+    if (me && JSON.stringify(me) !== JSON.stringify(user)) {
+      setUser(me);
+    }
+  }, [meQuery.data, user, setUser]);
 
   const current = useQuery({
     queryKey: ["portfolio", "current"],

@@ -1,5 +1,31 @@
 import { Fragment, type ReactNode } from "react";
 
+/**
+ * Sanitize a markdown link target. Content can be untrusted (LLM advice / legal
+ * docs), so only allow http(s)/mailto schemes and relative (/-rooted) URLs.
+ * Anything else (javascript:, data:, vbscript:, …) returns null → no href.
+ */
+function safeHref(raw: string): string | null {
+  // Strip whitespace and control chars (incl. tab/newline/NUL/DEL) that could
+  // hide a dangerous scheme like "java\tscript:".
+  // eslint-disable-next-line no-control-regex
+  const url = raw.replace(/[\u0000-\u0020\u007f]/g, "");
+  if (!url) return null;
+  // Relative URLs rooted at '/' (but not protocol-relative '//') are safe.
+  if (url.startsWith("/") && !url.startsWith("//")) return url;
+  // If there's a scheme, only permit a known-safe allowlist (case-insensitive).
+  const schemeMatch = /^([a-z][a-z0-9+.-]*):/i.exec(url);
+  if (schemeMatch) {
+    const scheme = schemeMatch[1].toLowerCase();
+    if (scheme === "http" || scheme === "https" || scheme === "mailto") {
+      return url;
+    }
+    return null;
+  }
+  // No scheme and not '/'-rooted (e.g. "example.com/x", "#anchor") → treat as relative.
+  return url;
+}
+
 /** Inline formatting: **bold**, _em_, [text](url). Deliberately tiny. */
 function inline(text: string, keyBase: string): ReactNode[] {
   const nodes: ReactNode[] = [];
@@ -14,17 +40,23 @@ function inline(text: string, keyBase: string): ReactNode[] {
     } else if (m[2] !== undefined) {
       nodes.push(<em key={`${keyBase}-e${i}`}>{m[2]}</em>);
     } else if (m[3] !== undefined) {
-      nodes.push(
-        <a
-          key={`${keyBase}-a${i}`}
-          href={m[4]}
-          className="text-indigo-400 underline"
-          target="_blank"
-          rel="noreferrer"
-        >
-          {m[3]}
-        </a>,
-      );
+      const href = safeHref(m[4]);
+      if (href) {
+        nodes.push(
+          <a
+            key={`${keyBase}-a${i}`}
+            href={href}
+            className="text-indigo-400 underline"
+            target="_blank"
+            rel="noreferrer"
+          >
+            {m[3]}
+          </a>,
+        );
+      } else {
+        // Unsafe/unsupported URL scheme: render the link text without a href.
+        nodes.push(<Fragment key={`${keyBase}-a${i}`}>{m[3]}</Fragment>);
+      }
     }
     last = re.lastIndex;
     i += 1;

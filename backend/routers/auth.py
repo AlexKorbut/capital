@@ -26,6 +26,7 @@ from core.totp import (
     hash_recovery_code,
     provisioning_uri,
     verify_totp,
+    verify_totp_step,
 )
 from core.security import (
     create_access_token,
@@ -33,6 +34,7 @@ from core.security import (
     create_refresh_token,
     create_verification_token,
     decode_email_token,
+    decode_email_token_payload,
     decode_token,
     hash_password,
     verify_password,
@@ -148,7 +150,12 @@ async def refresh(body: RefreshRequest, db: AsyncSession = Depends(get_db)) -> T
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token"
         )
-    user = await db.get(User, uuid.UUID(payload["sub"]))
+    try:
+        user = await db.get(User, uuid.UUID(payload["sub"]))
+    except (ValueError, KeyError, TypeError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token"
+        )
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="User no longer exists"
@@ -186,8 +193,9 @@ async def request_verification(
 
 
 @router.post("/verify-email/confirm", response_model=MessageResponse)
+@limiter.limit(AUTH_LIMIT)
 async def confirm_verification(
-    body: TokenOnlyRequest, db: AsyncSession = Depends(get_db)
+    request: Request, body: TokenOnlyRequest, db: AsyncSession = Depends(get_db)
 ) -> MessageResponse:
     try:
         sub = decode_email_token(body.token, purpose="email_verify")
@@ -221,7 +229,10 @@ async def forgot_password(
     if user is not None and user.password_hash:
         try:
             await send_password_reset_email(
-                to=user.email, token=create_password_reset_token(str(user.id))
+                to=user.email,
+                token=create_password_reset_token(
+                    str(user.id), int(user.token_version or 0)
+                ),
             )
         except Exception:  # noqa: BLE001
             pass
@@ -236,13 +247,20 @@ async def reset_password(
     request: Request, body: PasswordResetRequest, db: AsyncSession = Depends(get_db)
 ) -> MessageResponse:
     try:
-        sub = decode_email_token(body.token, purpose="password_reset")
-        user = await db.get(User, uuid.UUID(sub))
-    except (JWTError, ValueError):
+        payload = decode_email_token_payload(body.token, purpose="password_reset")
+        user = await db.get(User, uuid.UUID(payload["sub"]))
+    except (JWTError, ValueError, KeyError):
         raise HTTPException(status_code=400, detail="Недействительная или истёкшая ссылка.")
     if user is None:
         raise HTTPException(status_code=400, detail="Пользователь не найден.")
+    # Single-use: the token is bound to the version it was issued at. Reject a
+    # token whose version is stale (already-used reset, or sessions since revoked).
+    if int(payload.get("tv", 0)) != int(user.token_version or 0):
+        raise HTTPException(status_code=400, detail="Недействительная или истёкшая ссылка.")
     user.password_hash = hash_password(body.password)
+    # Invalidate every existing session AND this reset token (a stolen session
+    # must not survive a password reset).
+    user.token_version = int(user.token_version or 0) + 1
     await db.commit()
     return MessageResponse(message="Пароль обновлён.")
 
@@ -254,8 +272,16 @@ async def _consume_second_factor(db: AsyncSession, user: User, code: str) -> boo
     """Validate a TOTP code or burn a one-time recovery code. Commits on use."""
     code = (code or "").strip()
     secret = decrypt(user.totp_secret) if user.totp_secret else None
-    if secret and verify_totp(secret, code):
-        return True
+    if secret:
+        step = verify_totp_step(secret, code)
+        if step is not None:
+            # Block replay: a code's step must be newer than the last consumed.
+            last = user.totp_last_used_step
+            if last is not None and step <= last:
+                return False
+            user.totp_last_used_step = step
+            await db.commit()
+            return True
     # Recovery code fallback (single-use).
     settings_dict = dict(user.settings or {})
     codes: list[str] = list(settings_dict.get("totp_recovery", []))
@@ -276,8 +302,11 @@ async def twofa_status(current: User = Depends(get_current_user)) -> TwoFAStatus
 
 
 @router.post("/2fa/setup", response_model=TwoFASetupResponse)
+@limiter.limit(AUTH_LIMIT)
 async def twofa_setup(
-    current: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+    request: Request,
+    current: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ) -> TwoFASetupResponse:
     """Generate a fresh secret (stored, not yet enabled) and an otpauth URI."""
     if current.totp_enabled:
@@ -291,7 +320,9 @@ async def twofa_setup(
 
 
 @router.post("/2fa/enable", response_model=TwoFAEnableResponse)
+@limiter.limit(AUTH_LIMIT)
 async def twofa_enable(
+    request: Request,
     body: TwoFAEnableRequest,
     current: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -300,8 +331,11 @@ async def twofa_enable(
     secret = decrypt(current.totp_secret) if current.totp_secret else None
     if not secret:
         raise HTTPException(status_code=400, detail="Сначала вызовите /2fa/setup.")
-    if not verify_totp(secret, body.code):
+    step = verify_totp_step(secret, body.code)
+    if step is None:
         raise HTTPException(status_code=400, detail="Неверный код.")
+    # Burn the enrolment code so it can't be replayed at login.
+    current.totp_last_used_step = step
 
     recovery = generate_recovery_codes()
     settings_dict = dict(current.settings or {})
@@ -313,7 +347,9 @@ async def twofa_enable(
 
 
 @router.post("/2fa/disable", response_model=MessageResponse)
+@limiter.limit(AUTH_LIMIT)
 async def twofa_disable(
+    request: Request,
     body: CodeRequest,
     current: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -324,6 +360,7 @@ async def twofa_disable(
         raise HTTPException(status_code=400, detail="Неверный код.")
     current.totp_enabled = False
     current.totp_secret = None
+    current.totp_last_used_step = None
     settings_dict = dict(current.settings or {})
     settings_dict.pop("totp_recovery", None)
     current.settings = settings_dict

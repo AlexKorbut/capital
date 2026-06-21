@@ -12,6 +12,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Optional
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.billing import SubscriptionEvent
@@ -89,9 +90,9 @@ async def apply_subscription_update(
             user.subscription = "free"
             user.sub_expires_at = None
         else:
-            # Soft cancel: let the paid window lapse on its own.
-            if upd.expires_at is not None:
-                user.sub_expires_at = upd.expires_at
+            # Soft cancel: let the paid window lapse on its own, but never
+            # shorten an already-paid (possibly longer/stacked) window.
+            user.sub_expires_at = _max_expiry(user.sub_expires_at, upd.expires_at)
     # status == "failed": record only, no plan change.
 
     db.add(
@@ -105,7 +106,13 @@ async def apply_subscription_update(
             provider_ref=upd.provider_ref,
         )
     )
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        # Concurrent delivery of the same event lost the race on the unique
+        # (payment_provider, provider_ref) constraint — already applied, no-op.
+        await db.rollback()
+        return False
 
     # Receipt on a successful payment (best-effort; never breaks the webhook).
     if upd.status == "active" and upd.amount_usd:

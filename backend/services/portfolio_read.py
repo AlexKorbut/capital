@@ -36,11 +36,13 @@ def _estimated_usd(a: Asset, as_of: datetime | None) -> Decimal | None:
         return a.usd_value
     now = datetime.now(timezone.utc)
     base = as_of if as_of.tzinfo else as_of.replace(tzinfo=timezone.utc)
-    years = max((now - base).days, 0) / 365.0
-    if years == 0:
+    days = max((now - base).days, 0)
+    if days == 0:
         return a.usd_value
-    factor = (1.0 + float(a.appreciation_rate) / 100.0) ** years
-    return (a.usd_value * Decimal(str(factor))).quantize(Decimal("0.01"))
+    # Compound entirely in Decimal to avoid float precision loss on money values.
+    years = Decimal(days) / Decimal(365)
+    factor = (Decimal(1) + a.appreciation_rate / Decimal(100)) ** years
+    return (a.usd_value * factor).quantize(Decimal("0.01"))
 
 
 def _to_uuid(value) -> uuid.UUID:
