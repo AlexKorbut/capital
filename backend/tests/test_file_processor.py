@@ -1,8 +1,6 @@
 """Срез 4 — file processor routing (CSV pure; image -> vision mocked)."""
 from __future__ import annotations
 
-import pytest
-
 
 async def test_csv_bytes_decoded_to_text():
     from services.file_processor import process_file

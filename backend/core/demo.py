@@ -39,7 +39,7 @@ _CCY_WORDS: dict[str, str] = {
 
 # crypto keyword -> symbol
 _CRYPTO_WORDS: dict[str, str] = {
-    "битк": "BTC", "биток": "BTC", "битка": "BTC", "биток": "BTC", "btc": "BTC", "бтс": "BTC",
+    "битк": "BTC", "биток": "BTC", "битка": "BTC", "btc": "BTC", "бтс": "BTC",
     "эфир": "ETH", "эфира": "ETH", "eth": "ETH",
     "usdt": "USDT", "тезер": "USDT", "тизер": "USDT",
     "solana": "SOL", "сол": "SOL", "sol": "SOL",

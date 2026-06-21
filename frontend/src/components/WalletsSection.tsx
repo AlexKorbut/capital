@@ -11,20 +11,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useT } from "@/lib/i18n";
+import { formatUsd as usd } from "@/lib/utils";
 
 const CHAINS: Chain[] = ["BTC", "ETH", "TON"];
-
-function usd(value: string | null): string {
-  if (value == null) return "—";
-  const n = Number(value);
-  return Number.isNaN(n)
-    ? "—"
-    : n.toLocaleString("en-US", {
-        style: "currency",
-        currency: "USD",
-        maximumFractionDigits: 0,
-      });
-}
 
 export function WalletsSection() {
   const t = useT();

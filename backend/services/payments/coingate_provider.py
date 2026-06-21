@@ -15,7 +15,7 @@ import hashlib
 import hmac
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 import httpx
@@ -102,6 +102,21 @@ class CoinGateProvider:
         user_id, plan, _months = _split_order_id(order_id)
 
         if status_raw == "paid":
+            # Verify the order's USD price actually covers our configured price —
+            # don't grant access on an underpaid order (defense in depth on top of
+            # the signature check).
+            if _is_underpaid(data.get("price_amount"), settings.crypto_pro_price_usd):
+                return SubscriptionUpdate(
+                    user_id=user_id,
+                    status="failed",
+                    plan=None,
+                    event_type="failed",
+                    provider=self.name,
+                    provider_ref=token or order_id,
+                    amount_usd=_amount(data),
+                    currency="USD",
+                    raw={"status": status_raw, "reason": "underpaid"},
+                )
             # The granted period is fixed by server config, NOT by the order_id
             # (which is attacker-influenceable on a forged/replayed callback).
             months = max(1, settings.crypto_pro_months)
@@ -143,6 +158,20 @@ class CoinGateProvider:
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _is_underpaid(price_amount: object, expected_usd: str) -> bool:
+    """True if the order's USD price is clearly below the configured price.
+
+    Missing/garbage amount → not treated as underpaid (the signature already
+    vouches for the body; we only reject a concretely-too-low amount).
+    """
+    if price_amount is None:
+        return False
+    try:
+        return Decimal(str(price_amount)) + Decimal("0.01") < Decimal(expected_usd)
+    except (InvalidOperation, ValueError):
+        return False
 
 
 def _split_order_id(order_id: str) -> tuple[str | None, str | None, int]:

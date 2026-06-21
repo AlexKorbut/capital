@@ -197,8 +197,11 @@ async def test_account_export_and_delete(db_ready):
 # --- Rate limiting --------------------------------------------------------
 
 
-async def test_forgot_password_rate_limited(db_ready):
+async def test_forgot_password_rate_limited(db_ready, monkeypatch):
     """FORGOT_LIMIT is 5/hour — the 6th call in the window returns 429."""
+    from core.ratelimit import limiter
+
+    monkeypatch.setattr(limiter, "enabled", True)  # suite-wide default is disabled
     async with await _client() as client:
         codes = []
         for _ in range(7):

@@ -26,7 +26,6 @@ from core.totp import (
     generate_secret,
     hash_recovery_code,
     provisioning_uri,
-    verify_totp,
     verify_totp_step,
 )
 from core.security import (

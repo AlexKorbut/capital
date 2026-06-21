@@ -34,7 +34,6 @@ class Snapshot(Base):
         DateTime(timezone=True), server_default=func.now(), index=True
     )
     total_usd: Mapped[Decimal | None] = mapped_column(Numeric(20, 2), nullable=True)
-    total_base: Mapped[Decimal | None] = mapped_column(Numeric(20, 2), nullable=True)
     base_currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
     # raw_input may contain sensitive financial detail -> encrypted at rest.
     raw_input: Mapped[str | None] = mapped_column(EncryptedString, nullable=True)
