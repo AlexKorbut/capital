@@ -15,12 +15,11 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
-from sqlalchemy import select
-
 from core.db import SessionLocal
 from models.user import User
 from services import email as email_service
 from services import portfolio_read
+from services.userscan import iter_users
 
 logger = logging.getLogger("kapital.inheritance")
 
@@ -39,8 +38,7 @@ async def run_inheritance_check() -> int:
     sent = 0
     now = datetime.now(timezone.utc)
     async with SessionLocal() as db:
-        users = list(await db.scalars(select(User)))
-        for user in users:
+        async for user in iter_users(db):
             cfg = beneficiary_config(user)
             if not cfg["email"] or cfg["days"] <= 0 or cfg["notified"]:
                 continue
@@ -54,6 +52,12 @@ async def run_inheritance_check() -> int:
 
             snap = await portfolio_read.latest_snapshot(db, user.id)
             current = str(snap.total_usd) if snap and snap.total_usd is not None else None
+            # Mark notified and persist BEFORE sending: a crash after the send
+            # must never cause a SECOND disclosure to the trusted contact.
+            s = dict(user.settings or {})
+            s["beneficiary_notified"] = True
+            user.settings = s
+            await db.commit()
             try:
                 await email_service.send_inheritance_email(
                     to=cfg["email"],
@@ -63,12 +67,11 @@ async def run_inheritance_check() -> int:
                     days=days,
                     lang=(user.settings or {}).get("lang", "ru"),
                 )
-                s = dict(user.settings or {})
-                s["beneficiary_notified"] = True
-                user.settings = s
-                await db.commit()
                 sent += 1
-            except Exception as e:  # noqa: BLE001
-                logger.warning("inheritance notice failed for %s: %s", user.email, e)
+            except Exception as e:  # noqa: BLE001 — already flagged; don't resend
+                logger.warning(
+                    "inheritance notice failed for %s (marked notified): %s",
+                    user.email, e,
+                )
     logger.info("inheritance notices sent: %d", sent)
     return sent

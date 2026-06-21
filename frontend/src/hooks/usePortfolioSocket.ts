@@ -24,9 +24,9 @@ export function usePortfolioSocket(onEvent: (e: PortfolioEvent) => void): void {
     const connect = () => {
       if (closed) return;
       const proto = window.location.protocol === "https:" ? "wss" : "ws";
-      ws = new WebSocket(
-        `${proto}://${window.location.host}/api/v1/ws/portfolio?token=${token}`,
-      );
+      ws = new WebSocket(`${proto}://${window.location.host}/api/v1/ws/portfolio`);
+      // Authenticate in the first frame, not the URL (query strings leak to logs).
+      ws.onopen = () => ws?.send(JSON.stringify({ type: "auth", token }));
       ws.onmessage = (ev) => {
         try {
           handlerRef.current(JSON.parse(ev.data));

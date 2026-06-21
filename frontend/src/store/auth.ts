@@ -34,6 +34,12 @@ export const useAuth = create<AuthState>()(
       setUser: (user) => set({ user }),
       clear: () => set({ user: null, accessToken: null, refreshToken: null }),
     }),
-    { name: "kapital-auth" },
+    {
+      name: "kapital-auth",
+      // Never persist the refresh token to localStorage — it lives only in an
+      // httpOnly cookie, out of reach of XSS. The short-lived access token is
+      // kept so route guards survive a reload.
+      partialize: (s) => ({ user: s.user, accessToken: s.accessToken }),
+    },
   ),
 );

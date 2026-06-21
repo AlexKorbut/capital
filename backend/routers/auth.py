@@ -12,10 +12,11 @@ and mis-reads it as a query param (422). Eager (real-object) annotations avoid t
 """
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.config import settings
 from core.crypto import decrypt, encrypt
 from core.db import get_db
 from core.deps import get_current_user
@@ -67,19 +68,44 @@ from services.email import (
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-def _tokens_for(user: User) -> TokenPair:
+# The long-lived refresh token lives ONLY in this httpOnly cookie, never in the
+# response body — so an XSS payload can't read it from JS/localStorage. Scoped to
+# the auth path so it isn't sent with every API request.
+_REFRESH_COOKIE = "kapital_refresh"
+_REFRESH_COOKIE_PATH = "/api/v1/auth"
+
+
+def _set_refresh_cookie(response: Response, token: str) -> None:
+    response.set_cookie(
+        key=_REFRESH_COOKIE,
+        value=token,
+        httponly=True,
+        secure=settings.is_prod,  # only require HTTPS in prod (dev is http)
+        samesite="lax",
+        path=_REFRESH_COOKIE_PATH,
+        max_age=settings.refresh_token_ttl_days * 86400,
+    )
+
+
+def _clear_refresh_cookie(response: Response) -> None:
+    response.delete_cookie(_REFRESH_COOKIE, path=_REFRESH_COOKIE_PATH)
+
+
+def _issue_tokens(user: User, response: Response) -> TokenPair:
+    """Mint an access token (body) + refresh token (httpOnly cookie only)."""
     sub = str(user.id)
     tv = int(user.token_version or 0)
-    return TokenPair(
-        access_token=create_access_token(sub, tv),
-        refresh_token=create_refresh_token(sub, tv),
-    )
+    _set_refresh_cookie(response, create_refresh_token(sub, tv))
+    return TokenPair(access_token=create_access_token(sub, tv), refresh_token="")
 
 
 @router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
 @limiter.limit(AUTH_LIMIT)
 async def register(
-    request: Request, body: RegisterRequest, db: AsyncSession = Depends(get_db)
+    request: Request,
+    response: Response,
+    body: RegisterRequest,
+    db: AsyncSession = Depends(get_db),
 ) -> AuthResponse:
     existing = await db.scalar(select(User).where(User.email == body.email))
     if existing is not None:
@@ -105,13 +131,18 @@ async def register(
     except Exception:  # noqa: BLE001 - delivery must not fail signup
         pass
 
-    return AuthResponse(user=UserOut.model_validate(user), tokens=_tokens_for(user))
+    return AuthResponse(
+        user=UserOut.model_validate(user), tokens=_issue_tokens(user, response)
+    )
 
 
 @router.post("/login", response_model=AuthResponse)
 @limiter.limit(AUTH_LIMIT)
 async def login(
-    request: Request, body: LoginRequest, db: AsyncSession = Depends(get_db)
+    request: Request,
+    response: Response,
+    body: LoginRequest,
+    db: AsyncSession = Depends(get_db),
 ) -> AuthResponse:
     user = await db.scalar(select(User).where(User.email == body.email))
     if user is None or not user.password_hash or not verify_password(
@@ -139,13 +170,26 @@ async def login(
         user.settings = s
     await db.commit()
 
-    return AuthResponse(user=UserOut.model_validate(user), tokens=_tokens_for(user))
+    return AuthResponse(
+        user=UserOut.model_validate(user), tokens=_issue_tokens(user, response)
+    )
 
 
 @router.post("/refresh", response_model=TokenPair)
-async def refresh(body: RefreshRequest, db: AsyncSession = Depends(get_db)) -> TokenPair:
+async def refresh(
+    request: Request,
+    response: Response,
+    body: RefreshRequest | None = None,
+    db: AsyncSession = Depends(get_db),
+) -> TokenPair:
+    # Prefer the httpOnly cookie; fall back to the body for non-browser clients.
+    token = request.cookies.get(_REFRESH_COOKIE) or (body.refresh_token if body else None)
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing refresh token"
+        )
     try:
-        payload = decode_token(body.refresh_token, expected_type="refresh")
+        payload = decode_token(token, expected_type="refresh")
     except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token"
@@ -164,7 +208,7 @@ async def refresh(body: RefreshRequest, db: AsyncSession = Depends(get_db)) -> T
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Session revoked"
         )
-    return _tokens_for(user)
+    return _issue_tokens(user, response)
 
 
 @router.get("/me", response_model=UserOut)
@@ -370,9 +414,18 @@ async def twofa_disable(
 
 @router.post("/logout-all", response_model=TokenPair)
 async def logout_all(
-    current: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+    response: Response,
+    current: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ) -> TokenPair:
     """Invalidate every existing token (all devices) and issue a fresh pair."""
     current.token_version = int(current.token_version or 0) + 1
     await db.commit()
-    return _tokens_for(current)
+    return _issue_tokens(current, response)
+
+
+@router.post("/logout", response_model=MessageResponse)
+async def logout(response: Response) -> MessageResponse:
+    """Clear the refresh cookie for this browser (single-device sign-out)."""
+    _clear_refresh_cookie(response)
+    return MessageResponse(message="Вы вышли из системы.")

@@ -23,7 +23,9 @@ class LoginRequest(BaseModel):
 
 
 class RefreshRequest(BaseModel):
-    refresh_token: str
+    # Optional: the refresh token normally arrives in an httpOnly cookie. The
+    # body field is kept for backward compatibility / non-browser clients.
+    refresh_token: Optional[str] = None
 
 
 class EmailOnlyRequest(BaseModel):
@@ -45,7 +47,9 @@ class MessageResponse(BaseModel):
 
 class TokenPair(BaseModel):
     access_token: str
-    refresh_token: str
+    # Empty in responses: the refresh token is delivered as an httpOnly cookie,
+    # never in the JS-readable body (so XSS can't lift the long-lived token).
+    refresh_token: str = ""
     token_type: str = "bearer"
 
 

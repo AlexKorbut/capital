@@ -11,6 +11,7 @@ import uuid
 from decimal import Decimal
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agents.state import AssetItem
@@ -79,7 +80,16 @@ async def _ensure_snapshot(db: AsyncSession, user_id, base_currency: str) -> Sna
         input_type="manual", is_confirmed=True,
     )
     db.add(snap)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError:
+        # Concurrent first-edit lost the race on the one-manual-snapshot unique
+        # index — roll back and reuse the snapshot the other request created.
+        await db.rollback()
+        existing = await portfolio_read.latest_snapshot(db, user_id)
+        if existing is not None:
+            return existing
+        raise
     return snap
 
 

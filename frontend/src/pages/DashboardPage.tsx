@@ -12,7 +12,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { fetchMe } from "@/services/auth";
+import { fetchMe, logout } from "@/services/auth";
 import {
   getCurrentPortfolio,
   getHistoryChart,
@@ -144,7 +144,7 @@ export function DashboardPage() {
     <div className="mx-auto max-w-4xl px-4 py-10">
       <header className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">КАПИТАЛЬ</h1>
-        <Button variant="outline" onClick={clear}>
+        <Button variant="outline" onClick={() => void logout().finally(clear)}>
           {t("Выйти", "Sign out")}
         </Button>
       </header>
