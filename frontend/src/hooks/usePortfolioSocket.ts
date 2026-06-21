@@ -34,8 +34,10 @@ export function usePortfolioSocket(onEvent: (e: PortfolioEvent) => void): void {
           /* ignore malformed frames */
         }
       };
-      ws.onclose = () => {
-        if (!closed) retry = setTimeout(connect, 3000);
+      ws.onclose = (ev) => {
+        // 1008 = auth rejected (e.g. expired token). Don't spin-reconnect with the
+        // same stale token; the effect re-runs when the store token refreshes.
+        if (!closed && ev.code !== 1008) retry = setTimeout(connect, 3000);
       };
       ws.onerror = () => ws?.close();
     };

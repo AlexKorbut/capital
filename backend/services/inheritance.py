@@ -52,12 +52,6 @@ async def run_inheritance_check() -> int:
 
             snap = await portfolio_read.latest_snapshot(db, user.id)
             current = str(snap.total_usd) if snap and snap.total_usd is not None else None
-            # Mark notified and persist BEFORE sending: a crash after the send
-            # must never cause a SECOND disclosure to the trusted contact.
-            s = dict(user.settings or {})
-            s["beneficiary_notified"] = True
-            user.settings = s
-            await db.commit()
             try:
                 await email_service.send_inheritance_email(
                     to=cfg["email"],
@@ -67,11 +61,19 @@ async def run_inheritance_check() -> int:
                     days=days,
                     lang=(user.settings or {}).get("lang", "ru"),
                 )
-                sent += 1
-            except Exception as e:  # noqa: BLE001 — already flagged; don't resend
+            except Exception as e:  # noqa: BLE001 — transient failure: retry next run
                 logger.warning(
-                    "inheritance notice failed for %s (marked notified): %s",
-                    user.email, e,
+                    "inheritance notice failed for %s (will retry): %s", user.email, e
                 )
+                continue
+            # Mark notified ONLY after a successful send, so a transient failure is
+            # retried rather than silently swallowed. A crash in the tiny
+            # send→commit window risks at most one duplicate notice — acceptable
+            # versus permanently missing a dead-man's-switch alert.
+            s = dict(user.settings or {})
+            s["beneficiary_notified"] = True
+            user.settings = s
+            await db.commit()
+            sent += 1
     logger.info("inheritance notices sent: %d", sent)
     return sent

@@ -27,11 +27,16 @@ def _graphs(request: Request):
     return graphs
 
 
-async def _wallet_out(w: Wallet, price: Decimal | None = None) -> WalletOut:
+# Sentinel: distinguishes "no price was pre-resolved" (fetch it) from "price was
+# pre-resolved as None / unavailable" (don't re-fetch — that would defeat dedup).
+_UNSET = object()
+
+
+async def _wallet_out(w: Wallet, price: object = _UNSET) -> WalletOut:
     balance = await wallets_service.fetch_balance(w.chain, w.address)
     usd = None
     if balance is not None:
-        if price is None:
+        if price is _UNSET:
             price = await market.usd_price_for_crypto(w.chain)
         if price is not None:
             usd = str((balance * price).quantize(Decimal("0.01")))

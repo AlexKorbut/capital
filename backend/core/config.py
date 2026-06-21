@@ -28,6 +28,14 @@ class Settings(BaseSettings):
     environment: Literal["development", "production"] = "development"
     debug: bool = True
 
+    # --- API / cookies ---
+    # Mount prefix for all routers (kept in one place so the refresh-cookie path
+    # can't drift out of sync with the actual route URLs).
+    api_prefix: str = "/api/v1"
+    # Refresh-cookie SameSite. "lax" is correct/secure for the default
+    # same-origin deploy; set "none" (implies Secure) for a cross-origin API.
+    cookie_samesite: Literal["lax", "strict", "none"] = "lax"
+
     # --- Demo mode ---
     # When on, LLM-backed services return realistic canned/computed results
     # instead of calling a provider — so the whole app is testable with NO API

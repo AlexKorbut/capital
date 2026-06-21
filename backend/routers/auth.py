@@ -70,18 +70,22 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 # The long-lived refresh token lives ONLY in this httpOnly cookie, never in the
 # response body — so an XSS payload can't read it from JS/localStorage. Scoped to
-# the auth path so it isn't sent with every API request.
+# the auth path (derived from the shared API prefix) so it isn't sent with every
+# API request and can't drift out of sync with the mounted route URLs.
 _REFRESH_COOKIE = "kapital_refresh"
-_REFRESH_COOKIE_PATH = "/api/v1/auth"
+_REFRESH_COOKIE_PATH = f"{settings.api_prefix}/auth"
 
 
 def _set_refresh_cookie(response: Response, token: str) -> None:
+    samesite = settings.cookie_samesite
     response.set_cookie(
         key=_REFRESH_COOKIE,
         value=token,
         httponly=True,
-        secure=settings.is_prod,  # only require HTTPS in prod (dev is http)
-        samesite="lax",
+        # SameSite=None is only valid alongside Secure; otherwise require HTTPS
+        # only in prod (dev is http).
+        secure=settings.is_prod or samesite == "none",
+        samesite=samesite,
         path=_REFRESH_COOKIE_PATH,
         max_age=settings.refresh_token_ttl_days * 86400,
     )

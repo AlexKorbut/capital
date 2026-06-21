@@ -44,7 +44,7 @@ logger = logging.getLogger("kapital")
 # compilation traces are captured. Both are opt-in (no-op without their keys).
 _OBS = init_observability()
 
-API_PREFIX = "/api/v1"
+API_PREFIX = settings.api_prefix
 
 
 @asynccontextmanager

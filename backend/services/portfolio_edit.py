@@ -84,9 +84,15 @@ async def _ensure_snapshot(db: AsyncSession, user_id, base_currency: str) -> Sna
         await db.flush()
     except IntegrityError:
         # Concurrent first-edit lost the race on the one-manual-snapshot unique
-        # index — roll back and reuse the snapshot the other request created.
+        # index — roll back and reuse the manual snapshot the other request made.
+        # Query the manual row directly (matching the index predicate) rather than
+        # latest_snapshot, whose is_confirmed filter could miss it.
         await db.rollback()
-        existing = await portfolio_read.latest_snapshot(db, user_id)
+        existing = await db.scalar(
+            select(Snapshot)
+            .where(Snapshot.user_id == _to_uuid(user_id), Snapshot.input_type == "manual")
+            .limit(1)
+        )
         if existing is not None:
             return existing
         raise

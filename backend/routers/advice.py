@@ -172,11 +172,14 @@ async def ws_portfolio(ws: WebSocket) -> None:
         raw = await asyncio.wait_for(ws.receive_text(), timeout=10)
         parsed = json.loads(raw)
         token = parsed.get("token") if isinstance(parsed, dict) else None
-    except (asyncio.TimeoutError, WebSocketDisconnect, ValueError, TypeError):
+    except Exception:  # noqa: BLE001 — timeout / disconnect / non-text / bad JSON → no auth
         token = None
     user = await _user_from_token(token)
     if user is None:
-        await ws.close(code=status.WS_1008_POLICY_VIOLATION)
+        try:
+            await ws.close(code=status.WS_1008_POLICY_VIOLATION)
+        except Exception:  # noqa: BLE001 — client may already be gone
+            pass
         return
 
     manager = get_ws_manager()
