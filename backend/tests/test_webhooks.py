@@ -43,12 +43,14 @@ def coingate_secret(monkeypatch, non_demo):
     return "testsecret"
 
 
-def _coingate_body(uid: str, *, status: str = "paid", price: str = "9.00") -> bytes:
+def _coingate_body(
+    uid: str, *, status: str = "paid", price: str = "9.00", token: str | None = None
+) -> bytes:
     return json.dumps(
         {
             "status": status,
             "order_id": f"{uid}:pro:1",
-            "token": f"tok-{uuid.uuid4().hex}",
+            "token": token or f"tok-{uuid.uuid4().hex}",
             "price_amount": price,
             "price_currency": "USD",
         }
@@ -87,8 +89,8 @@ async def test_coingate_bad_signature_rejected(db_ready, coingate_secret):
             headers={"X-CoinGate-Signature": "deadbeef"},
         )
         assert res.status_code == 400
-        assert await _me(client, reg["tokens"]["access_token"]) and \
-            (await _me(client, reg["tokens"]["access_token"]))["subscription"] == "free"
+        me = await _me(client, reg["tokens"]["access_token"])
+        assert me["subscription"] == "free"
 
 
 async def test_coingate_unsigned_failclosed_in_prod_path(db_ready, monkeypatch, non_demo):
@@ -118,6 +120,32 @@ async def test_coingate_underpaid_not_granted(db_ready, coingate_secret):
         me = await _me(client, reg["tokens"]["access_token"])
         assert me["subscription"] == "free"
         assert me["sub_expires_at"] is None
+
+
+async def test_coingate_underpaid_then_topup_grants(db_ready, coingate_secret):
+    """An underpaid callback must NOT burn the order token: a later full payment
+    for the same order (same token) must still grant Pro."""
+    async with await _client() as client:
+        reg, _ = await _register(client)
+        uid = reg["user"]["id"]
+        token = f"tok-{uuid.uuid4().hex}"
+        underpaid = _coingate_body(uid, price="0.01", token=token)
+        r1 = await client.post(
+            f"{API}/webhooks/coingate",
+            content=underpaid,
+            headers={"X-CoinGate-Signature": _sign(underpaid, coingate_secret)},
+        )
+        assert r1.status_code == 200 and r1.json()["applied"] is False
+        # Same order, topped up to full price, same token → must grant now.
+        paid = _coingate_body(uid, price="9.00", token=token)
+        r2 = await client.post(
+            f"{API}/webhooks/coingate",
+            content=paid,
+            headers={"X-CoinGate-Signature": _sign(paid, coingate_secret)},
+        )
+        assert r2.status_code == 200 and r2.json()["applied"] is True
+        me = await _me(client, reg["tokens"]["access_token"])
+        assert me["subscription"] == "pro"
 
 
 async def test_coingate_idempotent_on_replay(db_ready, coingate_secret):

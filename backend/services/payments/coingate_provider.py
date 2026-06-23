@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
@@ -22,6 +23,8 @@ import httpx
 
 from core.config import settings
 from services.payments.base import CheckoutSession, SubscriptionUpdate
+
+logger = logging.getLogger("kapital.payments.coingate")
 
 _SANDBOX_BASE = "https://api-sandbox.coingate.com/v2"
 _LIVE_BASE = "https://api.coingate.com/v2"
@@ -104,18 +107,25 @@ class CoinGateProvider:
         if status_raw == "paid":
             # Verify the order's USD price actually covers our configured price —
             # don't grant access on an underpaid order (defense in depth on top of
-            # the signature check).
-            if _is_underpaid(data.get("price_amount"), settings.crypto_pro_price_usd):
+            # the signature check). Only meaningful for USD-priced orders (all our
+            # checkouts are USD); skip the gate otherwise rather than mis-compare.
+            currency = (data.get("price_currency") or "USD").upper()
+            if currency == "USD" and _is_underpaid(
+                data.get("price_amount"), settings.crypto_pro_price_usd
+            ):
+                # Return "ignored" (NOT a recorded "failed" event): recording would
+                # burn the order token via the idempotency key, so a later
+                # topped-up "paid" callback for the same order would be dropped and
+                # the full-paying customer never upgraded.
+                logger.warning(
+                    "CoinGate order %s underpaid (price_amount=%s %s); not granting",
+                    order_id, data.get("price_amount"), currency,
+                )
                 return SubscriptionUpdate(
-                    user_id=user_id,
-                    status="failed",
-                    plan=None,
-                    event_type="failed",
+                    user_id=None,
+                    status="ignored",
                     provider=self.name,
                     provider_ref=token or order_id,
-                    amount_usd=_amount(data),
-                    currency="USD",
-                    raw={"status": status_raw, "reason": "underpaid"},
                 )
             # The granted period is fixed by server config, NOT by the order_id
             # (which is attacker-influenceable on a forged/replayed callback).

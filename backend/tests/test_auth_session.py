@@ -50,6 +50,19 @@ async def test_refresh_without_cookie_is_401(db_ready):
         assert res.status_code == 401
 
 
+async def test_refresh_accepts_body_token_for_non_browser_clients(db_ready):
+    """The body-token fallback (no cookie) still works for non-browser clients."""
+    from core.security import create_refresh_token
+
+    async with await _client() as client:
+        reg, _ = await _register(client)
+        client.cookies.clear()  # no cookie → must use the body token
+        tok = create_refresh_token(reg["user"]["id"], 0)
+        res = await client.post(f"{API}/auth/refresh", json={"refresh_token": tok})
+        assert res.status_code == 200, res.text
+        assert res.json()["access_token"]
+
+
 async def test_logout_clears_cookie(db_ready):
     async with await _client() as client:
         await _register(client)
