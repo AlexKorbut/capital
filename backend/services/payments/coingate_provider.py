@@ -179,7 +179,17 @@ def _is_underpaid(price_amount: object, expected_usd: str) -> bool:
     if price_amount is None:
         return False
     try:
-        return Decimal(str(price_amount)) + Decimal("0.01") < Decimal(expected_usd)
+        expected = Decimal(expected_usd)
+    except (InvalidOperation, ValueError):
+        # Operator misconfiguration — surface it loudly instead of silently
+        # disabling the underpayment check.
+        logger.error(
+            "CRYPTO_PRO_PRICE_USD is not a valid amount (%r); "
+            "underpayment check disabled", expected_usd,
+        )
+        return False
+    try:
+        return Decimal(str(price_amount)) + Decimal("0.01") < expected
     except (InvalidOperation, ValueError):
         return False
 

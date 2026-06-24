@@ -21,6 +21,7 @@ import {
   type BreakdownEntry,
 } from "@/services/portfolio";
 import { useT } from "@/lib/i18n";
+import { formatUsd } from "@/lib/utils";
 import { useAuth } from "@/store/auth";
 import { Button } from "@/components/ui/button";
 import { EmptyState, ErrorState, LoadingState } from "@/components/states";
@@ -44,16 +45,8 @@ function signedUsd(value: string | null | undefined): string {
   if (value == null) return "—";
   const n = Number(value);
   if (Number.isNaN(n)) return "—";
-  const sign = n > 0 ? "+" : "";
-  return (
-    sign +
-    n.toLocaleString("en-US", {
-      style: "currency",
-      currency: "USD",
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })
-  );
+  // Reuse the shared rounding rule; only the leading + for gains is local.
+  return (n > 0 ? "+" : "") + formatUsd(value);
 }
 
 function changeClass(value: string | null | undefined): string {
