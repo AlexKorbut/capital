@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, String, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Numeric, String, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from core.db import Base
@@ -14,6 +14,17 @@ from models.types import EncryptedString
 
 class Snapshot(Base):
     __tablename__ = "snapshots"
+    # At most one "current" manual snapshot per user (the in-place edit target).
+    # Makes the first-edit create race-safe; history snapshots use other types.
+    __table_args__ = (
+        Index(
+            "uq_one_manual_snapshot",
+            "user_id",
+            unique=True,
+            sqlite_where=text("input_type = 'manual'"),
+            postgresql_where=text("input_type = 'manual'"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -23,7 +34,6 @@ class Snapshot(Base):
         DateTime(timezone=True), server_default=func.now(), index=True
     )
     total_usd: Mapped[Decimal | None] = mapped_column(Numeric(20, 2), nullable=True)
-    total_base: Mapped[Decimal | None] = mapped_column(Numeric(20, 2), nullable=True)
     base_currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
     # raw_input may contain sensitive financial detail -> encrypted at rest.
     raw_input: Mapped[str | None] = mapped_column(EncryptedString, nullable=True)

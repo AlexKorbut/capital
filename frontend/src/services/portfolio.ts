@@ -193,7 +193,8 @@ export async function getCurrentPortfolio(): Promise<CurrentPortfolio | null> {
 
 export interface AssetUpsert {
   asset_type: AssetType;
-  amount: number;
+  // String on the wire to preserve Decimal precision (backend parses Decimal from strings).
+  amount: string;
   currency?: string;
   location?: string | null;
   country?: string | null;

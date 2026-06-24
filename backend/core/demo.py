@@ -18,7 +18,7 @@ Nothing here ever touches the network or a provider SDK.
 from __future__ import annotations
 
 import re
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from agents.state import AssetItem, ParsedPortfolio
@@ -39,7 +39,7 @@ _CCY_WORDS: dict[str, str] = {
 
 # crypto keyword -> symbol
 _CRYPTO_WORDS: dict[str, str] = {
-    "битк": "BTC", "биток": "BTC", "битка": "BTC", "биток": "BTC", "btc": "BTC", "бтс": "BTC",
+    "битк": "BTC", "биток": "BTC", "битка": "BTC", "btc": "BTC", "бтс": "BTC",
     "эфир": "ETH", "эфира": "ETH", "eth": "ETH",
     "usdt": "USDT", "тезер": "USDT", "тизер": "USDT",
     "solana": "SOL", "сол": "SOL", "sol": "SOL",
@@ -76,9 +76,58 @@ _COUNTRY_WORDS: dict[str, tuple[str, str]] = {
 }
 
 
+def _to_decimal(num: str) -> Decimal:
+    """Parse a human-typed number, tolerating thousands separators.
+
+    Handles '1.000.000' / '1 000 000' / '1,000,000.50' style grouping and never
+    raises — an unparseable amount yields Decimal(0) so the demo parser can skip
+    it instead of crashing on arbitrary user text.
+    """
+    raw = (num or "").strip()
+    if not raw:
+        return Decimal(0)
+
+    # Spaces are always thousands separators here.
+    raw = raw.replace(" ", "")
+    has_dot = "." in raw
+    has_comma = "," in raw
+
+    if has_dot and has_comma:
+        # The right-most separator is the decimal point; the other groups.
+        if raw.rfind(",") > raw.rfind("."):
+            normalized = raw.replace(".", "").replace(",", ".")
+        else:
+            normalized = raw.replace(",", "")
+    elif has_comma:
+        # Comma alone: decimal if a single comma with <=2 trailing digits,
+        # otherwise thousands grouping.
+        if raw.count(",") == 1 and len(raw.split(",")[1]) <= 2:
+            normalized = raw.replace(",", ".")
+        else:
+            normalized = raw.replace(",", "")
+    elif has_dot:
+        # Dot alone: thousands grouping if repeated or grouped in 3s
+        # (e.g. '1.000.000'), otherwise a decimal point.
+        if raw.count(".") > 1:
+            normalized = raw.replace(".", "")
+        else:
+            integer, _, frac = raw.partition(".")
+            if len(frac) == 3 and len(integer) <= 3:
+                normalized = raw.replace(".", "")  # '1.000' -> 1000
+            else:
+                normalized = raw
+    else:
+        normalized = raw
+
+    try:
+        return Decimal(normalized)
+    except (InvalidOperation, ValueError):
+        return Decimal(0)
+
+
 def _expand_amount(num: str, suffix: str) -> Decimal:
     """'10' + 'к' -> 100000... actually 10*1000; '2' + 'кк' -> 2_000_000."""
-    value = Decimal(num.replace(",", ".").replace(" ", ""))
+    value = _to_decimal(num)
     s = (suffix or "").lower()
     if s in ("к", "k", "тыс", "тысяч"):
         value *= Decimal(1000)
@@ -130,7 +179,10 @@ def _parse_segment(seg: str) -> AssetItem | None:
         asset_type = "bank_deposit"
         rate_m = _RATE_RE.search(seg)
         if rate_m:
-            interest_rate = Decimal((rate_m.group(1) or rate_m.group(2)).replace(",", "."))
+            try:
+                interest_rate = Decimal((rate_m.group(1) or rate_m.group(2)).replace(",", "."))
+            except (InvalidOperation, ValueError):
+                interest_rate = None
     elif any(w in low for w in ("квартир", "дом", "недвиж", "apartment", "house")):
         asset_type = "real_estate"
     elif any(w in low for w in ("машин", "авто", "тачк", "car", "vehicle")):

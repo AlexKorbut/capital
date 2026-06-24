@@ -19,7 +19,7 @@ from agents.graph import compile_all
 from core.db import SessionLocal
 from core.tiers import _count_advice_this_week, limits_for
 from models.snapshot import Snapshot
-from models.user import User
+from services.userscan import iter_users
 from tasks.celery_app import celery
 from tasks.runner import run
 
@@ -29,9 +29,8 @@ logger = logging.getLogger("kapital.tasks.advice")
 async def _eligible_user_ids() -> list[str]:
     """Users with a confirmed snapshot who are under their weekly advice quota."""
     async with SessionLocal() as db:
-        users = list(await db.scalars(select(User)))
         eligible: list[str] = []
-        for user in users:
+        async for user in iter_users(db):
             has_snapshot = await db.scalar(
                 select(Snapshot.id)
                 .where(Snapshot.user_id == user.id, Snapshot.is_confirmed.is_(True))

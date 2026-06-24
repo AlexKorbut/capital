@@ -13,15 +13,18 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 import httpx
 
 from core.config import settings
 from services.payments.base import CheckoutSession, SubscriptionUpdate
+
+logger = logging.getLogger("kapital.payments.coingate")
 
 _SANDBOX_BASE = "https://api-sandbox.coingate.com/v2"
 _LIVE_BASE = "https://api.coingate.com/v2"
@@ -90,20 +93,48 @@ class CoinGateProvider:
             ).hexdigest()
             if not sig or not hmac.compare_digest(expected, sig):
                 raise ValueError("Invalid CoinGate signature")
+        elif not settings.is_demo:
+            # Fail closed: never trust an unsigned callback in a real deploy.
+            raise ValueError("CoinGate webhook secret not configured")
 
         data = _form_or_json(payload)
         status_raw = (data.get("status") or "").lower()
         order_id = data.get("order_id") or ""
         token = data.get("token")  # CoinGate order token, unique → idempotency
 
-        user_id, plan, months = _split_order_id(order_id)
+        user_id, plan, _months = _split_order_id(order_id)
 
         if status_raw == "paid":
-            expires = _now() + timedelta(days=30 * max(months, 1))
+            # Verify the order's USD price actually covers our configured price —
+            # don't grant access on an underpaid order (defense in depth on top of
+            # the signature check). Only meaningful for USD-priced orders (all our
+            # checkouts are USD); skip the gate otherwise rather than mis-compare.
+            currency = (data.get("price_currency") or "USD").upper()
+            if currency == "USD" and _is_underpaid(
+                data.get("price_amount"), settings.crypto_pro_price_usd
+            ):
+                # Return "ignored" (NOT a recorded "failed" event): recording would
+                # burn the order token via the idempotency key, so a later
+                # topped-up "paid" callback for the same order would be dropped and
+                # the full-paying customer never upgraded.
+                logger.warning(
+                    "CoinGate order %s underpaid (price_amount=%s %s); not granting",
+                    order_id, data.get("price_amount"), currency,
+                )
+                return SubscriptionUpdate(
+                    user_id=None,
+                    status="ignored",
+                    provider=self.name,
+                    provider_ref=token or order_id,
+                )
+            # The granted period is fixed by server config, NOT by the order_id
+            # (which is attacker-influenceable on a forged/replayed callback).
+            months = max(1, settings.crypto_pro_months)
+            expires = _now() + timedelta(days=30 * months)
             return SubscriptionUpdate(
                 user_id=user_id,
                 status="active",
-                plan=plan or "pro",
+                plan=plan if plan in ("pro", "business") else "pro",
                 expires_at=expires,
                 event_type="created",
                 provider=self.name,
@@ -137,6 +168,30 @@ class CoinGateProvider:
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _is_underpaid(price_amount: object, expected_usd: str) -> bool:
+    """True if the order's USD price is clearly below the configured price.
+
+    Missing/garbage amount → not treated as underpaid (the signature already
+    vouches for the body; we only reject a concretely-too-low amount).
+    """
+    if price_amount is None:
+        return False
+    try:
+        expected = Decimal(expected_usd)
+    except (InvalidOperation, ValueError):
+        # Operator misconfiguration — surface it loudly instead of silently
+        # disabling the underpayment check.
+        logger.error(
+            "CRYPTO_PRO_PRICE_USD is not a valid amount (%r); "
+            "underpayment check disabled", expected_usd,
+        )
+        return False
+    try:
+        return Decimal(str(price_amount)) + Decimal("0.01") < expected
+    except (InvalidOperation, ValueError):
+        return False
 
 
 def _split_order_id(order_id: str) -> tuple[str | None, str | None, int]:

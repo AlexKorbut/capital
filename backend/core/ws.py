@@ -20,8 +20,8 @@ class ConnectionManager:
         self._conns: dict[str, set[WebSocket]] = defaultdict(set)
         self._lock = asyncio.Lock()
 
-    async def connect(self, user_id: str, ws: WebSocket) -> None:
-        await ws.accept()
+    async def register(self, user_id: str, ws: WebSocket) -> None:
+        """Track an already-accepted socket (auth handshake done by the caller)."""
         async with self._lock:
             self._conns[user_id].add(ws)
         logger.info("ws connected: user=%s (%d total)", user_id, len(self._conns[user_id]))

@@ -17,6 +17,7 @@ from fastapi import Depends, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.config import settings
 from core.db import get_db
 from core.deps import get_current_user
 from models.advice import AdviceSession
@@ -124,8 +125,14 @@ def _week_start() -> datetime:
     return datetime(monday.year, monday.month, monday.day, tzinfo=timezone.utc)
 
 
+def _threshold(dt: datetime) -> datetime:
+    """Match the stored column type: SQLite (dev) keeps naive datetimes, Postgres
+    (prod) keeps tz-aware. Comparing the wrong kind silently mis-counts quotas."""
+    return dt.replace(tzinfo=None) if settings.is_sqlite else dt
+
+
 async def _count_snapshots_this_month(db: AsyncSession, user_id) -> int:
-    threshold = _month_start().replace(tzinfo=None)
+    threshold = _threshold(_month_start())
     return int(
         await db.scalar(
             select(func.count())
@@ -141,7 +148,7 @@ async def _count_snapshots_this_month(db: AsyncSession, user_id) -> int:
 
 
 async def _count_advice_this_week(db: AsyncSession, user_id) -> int:
-    threshold = _week_start().replace(tzinfo=None)
+    threshold = _threshold(_week_start())
     return int(
         await db.scalar(
             select(func.count())

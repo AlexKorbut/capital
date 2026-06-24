@@ -44,11 +44,20 @@ logger = logging.getLogger("kapital")
 # compilation traces are captured. Both are opt-in (no-op without their keys).
 _OBS = init_observability()
 
-API_PREFIX = "/api/v1"
+API_PREFIX = settings.api_prefix
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Fail fast in production on security-critical misconfiguration (forgeable
+    # JWTs, plaintext-at-rest, unverified webhooks) rather than booting insecurely.
+    if settings.is_prod:
+        problems = settings.production_misconfigurations()
+        if problems:
+            raise RuntimeError(
+                "Refusing to start in production with insecure configuration:\n  - "
+                + "\n  - ".join(problems)
+            )
     async with AsyncExitStack() as stack:
         checkpointer = await stack.enter_async_context(checkpointer_context())
         app.state.graphs = compile_all(checkpointer)

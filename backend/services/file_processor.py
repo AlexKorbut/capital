@@ -36,6 +36,19 @@ _VISION_SYSTEM = """\
 _VISION_HUMAN = "Извлеки из этого изображения все активы в виде простого списка."
 
 
+def _is_real_image(raw_bytes: bytes) -> bool:
+    """Validate by magic bytes — filename/MIME can be spoofed to burn vision tokens."""
+    if raw_bytes.startswith(b"\x89PNG\r\n\x1a\n"):  # PNG (8-byte signature)
+        return True
+    if raw_bytes.startswith(b"\xff\xd8\xff"):  # JPEG
+        return True
+    if raw_bytes.startswith((b"GIF87a", b"GIF89a")):  # GIF
+        return True
+    if raw_bytes[:4] == b"RIFF" and raw_bytes[8:12] == b"WEBP":  # WEBP
+        return True
+    return False
+
+
 def _flatten_content(content) -> str:
     """LangChain message content may be str or a list of blocks — flatten it."""
     if isinstance(content, str):
@@ -55,6 +68,8 @@ async def _image_to_text(raw_bytes: bytes, mime_type: str) -> str:
     if settings.is_demo:
         from core.demo import DEMO_VISION_TEXT
         return DEMO_VISION_TEXT
+    if not _is_real_image(raw_bytes):
+        raise ValueError("Файл не является изображением (PNG/JPEG/GIF/WEBP).")
     b64 = base64.b64encode(raw_bytes).decode("ascii")
     model = get_model(ModelRole.VISION)
     messages = [

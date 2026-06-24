@@ -11,6 +11,10 @@ from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Well-known placeholder shipped in .env.example. Refused in production so a
+# deploy can never run with a forgeable, publicly-known signing key.
+DEFAULT_JWT_SECRET = "change_me_min_32_chars_long_random_string_here"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -24,6 +28,14 @@ class Settings(BaseSettings):
     environment: Literal["development", "production"] = "development"
     debug: bool = True
 
+    # --- API / cookies ---
+    # Mount prefix for all routers (kept in one place so the refresh-cookie path
+    # can't drift out of sync with the actual route URLs).
+    api_prefix: str = "/api/v1"
+    # Refresh-cookie SameSite. "lax" is correct/secure for the default
+    # same-origin deploy; set "none" (implies Secure) for a cross-origin API.
+    cookie_samesite: Literal["lax", "strict", "none"] = "lax"
+
     # --- Demo mode ---
     # When on, LLM-backed services return realistic canned/computed results
     # instead of calling a provider — so the whole app is testable with NO API
@@ -35,7 +47,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite+aiosqlite:///./kapital.db"
 
     # --- Auth ---
-    jwt_secret: str = "change_me_min_32_chars_long_random_string_here"
+    jwt_secret: str = DEFAULT_JWT_SECRET
     jwt_algorithm: str = "HS256"
     access_token_ttl_min: int = 30
     refresh_token_ttl_days: int = 30
@@ -144,6 +156,33 @@ class Settings(BaseSettings):
     def llm_for(self, role: str) -> str:
         """Return the configured 'provider:model' string for a role name."""
         return getattr(self, f"llm_{role}")
+
+    def production_misconfigurations(self) -> list[str]:
+        """Fatal security misconfigurations for a production deploy.
+
+        These secrets otherwise silently fall back to insecure no-ops or a
+        well-known default (forgeable JWTs, plaintext-at-rest, unverified
+        webhooks). In production we refuse to boot rather than run insecurely.
+        """
+        problems: list[str] = []
+        if self.jwt_secret == DEFAULT_JWT_SECRET or len(self.jwt_secret) < 32:
+            problems.append(
+                "JWT_SECRET must be a unique value of at least 32 chars "
+                "(the default placeholder is public)."
+            )
+        if not self.fernet_key:
+            problems.append(
+                "FERNET_KEY must be set so field-level encryption at rest is active."
+            )
+        if self.stripe_secret_key and not self.stripe_webhook_secret:
+            problems.append(
+                "STRIPE_WEBHOOK_SECRET must be set when Stripe is configured."
+            )
+        if self.coingate_api_token and not self.coingate_webhook_secret:
+            problems.append(
+                "COINGATE_WEBHOOK_SECRET must be set when CoinGate is configured."
+            )
+        return problems
 
 
 @lru_cache

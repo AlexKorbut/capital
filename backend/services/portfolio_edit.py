@@ -11,6 +11,7 @@ import uuid
 from decimal import Decimal
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agents.state import AssetItem
@@ -79,7 +80,22 @@ async def _ensure_snapshot(db: AsyncSession, user_id, base_currency: str) -> Sna
         input_type="manual", is_confirmed=True,
     )
     db.add(snap)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError:
+        # Concurrent first-edit lost the race on the one-manual-snapshot unique
+        # index — roll back and reuse the manual snapshot the other request made.
+        # Query the manual row directly (matching the index predicate) rather than
+        # latest_snapshot, whose is_confirmed filter could miss it.
+        await db.rollback()
+        existing = await db.scalar(
+            select(Snapshot)
+            .where(Snapshot.user_id == _to_uuid(user_id), Snapshot.input_type == "manual")
+            .limit(1)
+        )
+        if existing is not None:
+            return existing
+        raise
     return snap
 
 

@@ -48,10 +48,19 @@ function rowToDraft(a: AssetRow): Draft {
   };
 }
 
+// Well-formed decimal: optional sign, digits with optional fractional part, or
+// a leading-dot fraction. No exponent — backend parses a plain Decimal string.
+const NUMERIC_RE = /^[+-]?(\d+(\.\d+)?|\.\d+)$/;
+
+function isValidAmount(raw: string): boolean {
+  return NUMERIC_RE.test(raw.trim());
+}
+
 function draftToUpsert(d: Draft): AssetUpsert {
   const body: AssetUpsert = {
     asset_type: d.asset_type,
-    amount: Number(d.amount),
+    // Keep the amount as a trimmed string to preserve full Decimal precision.
+    amount: d.amount.trim(),
     currency: d.currency.trim().toUpperCase() || "USD",
     location: d.location.trim() || null,
   };
@@ -92,7 +101,7 @@ function DraftForm({
       className="mt-2 grid grid-cols-2 gap-2 rounded-md border border-border p-3 sm:grid-cols-3"
       onSubmit={(e) => {
         e.preventDefault();
-        if (Number(draft.amount) > 0) onSubmit();
+        if (isValidAmount(draft.amount) && Number(draft.amount) > 0) onSubmit();
       }}
     >
       <label className="text-xs text-muted-foreground">
@@ -164,7 +173,12 @@ function DraftForm({
         />
       </label>
       <div className="col-span-2 flex gap-2 sm:col-span-3">
-        <Button type="submit" disabled={pending || Number(draft.amount) <= 0}>
+        <Button
+          type="submit"
+          disabled={
+            pending || !isValidAmount(draft.amount) || Number(draft.amount) <= 0
+          }
+        >
           {pending ? "…" : submitLabel}
         </Button>
         <Button type="button" variant="ghost" onClick={onCancel}>

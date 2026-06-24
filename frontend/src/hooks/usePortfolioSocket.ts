@@ -24,9 +24,9 @@ export function usePortfolioSocket(onEvent: (e: PortfolioEvent) => void): void {
     const connect = () => {
       if (closed) return;
       const proto = window.location.protocol === "https:" ? "wss" : "ws";
-      ws = new WebSocket(
-        `${proto}://${window.location.host}/api/v1/ws/portfolio?token=${token}`,
-      );
+      ws = new WebSocket(`${proto}://${window.location.host}/api/v1/ws/portfolio`);
+      // Authenticate in the first frame, not the URL (query strings leak to logs).
+      ws.onopen = () => ws?.send(JSON.stringify({ type: "auth", token }));
       ws.onmessage = (ev) => {
         try {
           handlerRef.current(JSON.parse(ev.data));
@@ -34,8 +34,10 @@ export function usePortfolioSocket(onEvent: (e: PortfolioEvent) => void): void {
           /* ignore malformed frames */
         }
       };
-      ws.onclose = () => {
-        if (!closed) retry = setTimeout(connect, 3000);
+      ws.onclose = (ev) => {
+        // 1008 = auth rejected (e.g. expired token). Don't spin-reconnect with the
+        // same stale token; the effect re-runs when the store token refreshes.
+        if (!closed && ev.code !== 1008) retry = setTimeout(connect, 3000);
       };
       ws.onerror = () => ws?.close();
     };

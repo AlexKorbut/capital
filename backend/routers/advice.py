@@ -7,6 +7,8 @@ WS   /ws/portfolio        push channel (advice_ready, ...); token-authenticated
 """
 from __future__ import annotations
 
+import asyncio
+import json
 import uuid
 
 from fastapi import (
@@ -158,15 +160,31 @@ async def _user_from_token(token: str | None) -> User | None:
 
 @router.websocket("/ws/portfolio")
 async def ws_portfolio(ws: WebSocket) -> None:
-    """Authenticated push channel. Connect with ?token=<access_jwt>."""
-    user = await _user_from_token(ws.query_params.get("token"))
+    """Authenticated push channel.
+
+    Auth is the FIRST frame after connect: ``{"type":"auth","token":<access_jwt>}``.
+    The token is sent in the body, not the URL — query strings leak into proxy
+    and server access logs.
+    """
+    await ws.accept()
+    token: str | None = None
+    try:
+        raw = await asyncio.wait_for(ws.receive_text(), timeout=10)
+        parsed = json.loads(raw)
+        token = parsed.get("token") if isinstance(parsed, dict) else None
+    except Exception:  # noqa: BLE001 — timeout / disconnect / non-text / bad JSON → no auth
+        token = None
+    user = await _user_from_token(token)
     if user is None:
-        await ws.close(code=status.WS_1008_POLICY_VIOLATION)
+        try:
+            await ws.close(code=status.WS_1008_POLICY_VIOLATION)
+        except Exception:  # noqa: BLE001 — client may already be gone
+            pass
         return
 
     manager = get_ws_manager()
     user_id = str(user.id)
-    await manager.connect(user_id, ws)
+    await manager.register(user_id, ws)
     try:
         await ws.send_json({"type": "connected"})
         while True:

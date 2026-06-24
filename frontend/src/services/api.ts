@@ -8,7 +8,8 @@ import { useAuth } from "@/store/auth";
 // In dev, Vite proxies /api -> backend. In prod, set VITE_API_BASE_URL.
 const baseURL = import.meta.env.VITE_API_BASE_URL ?? "/api/v1";
 
-export const api = axios.create({ baseURL });
+// withCredentials so the httpOnly refresh cookie is sent on /auth/refresh.
+export const api = axios.create({ baseURL, withCredentials: true });
 
 // --- Request: attach the access token -----------------------------------------
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
@@ -21,14 +22,16 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 let refreshing: Promise<string | null> | null = null;
 
 async function refreshAccessToken(): Promise<string | null> {
-  const { refreshToken, setTokens, clear } = useAuth.getState();
-  if (!refreshToken) return null;
+  const { setTokens, clear } = useAuth.getState();
   try {
-    // Bare axios call to avoid the interceptor recursion.
-    const { data } = await axios.post(`${baseURL}/auth/refresh`, {
-      refresh_token: refreshToken,
-    });
-    setTokens(data.access_token, data.refresh_token);
+    // Bare axios call to avoid the interceptor recursion. The refresh token is
+    // carried by the httpOnly cookie (withCredentials), not the body.
+    const { data } = await axios.post(
+      `${baseURL}/auth/refresh`,
+      {},
+      { withCredentials: true },
+    );
+    setTokens(data.access_token, data.refresh_token ?? "");
     return data.access_token as string;
   } catch {
     clear();

@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {
@@ -11,7 +12,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { fetchMe } from "@/services/auth";
+import { fetchMe, logout } from "@/services/auth";
 import {
   getCurrentPortfolio,
   getHistoryChart,
@@ -20,6 +21,7 @@ import {
   type BreakdownEntry,
 } from "@/services/portfolio";
 import { useT } from "@/lib/i18n";
+import { formatUsd } from "@/lib/utils";
 import { useAuth } from "@/store/auth";
 import { Button } from "@/components/ui/button";
 import { EmptyState, ErrorState, LoadingState } from "@/components/states";
@@ -43,15 +45,8 @@ function signedUsd(value: string | null | undefined): string {
   if (value == null) return "—";
   const n = Number(value);
   if (Number.isNaN(n)) return "—";
-  const sign = n > 0 ? "+" : "";
-  return (
-    sign +
-    n.toLocaleString("en-US", {
-      style: "currency",
-      currency: "USD",
-      maximumFractionDigits: 0,
-    })
-  );
+  // Reuse the shared rounding rule; only the leading + for gains is local.
+  return (n > 0 ? "+" : "") + formatUsd(value);
 }
 
 function changeClass(value: string | null | undefined): string {
@@ -62,6 +57,8 @@ function changeClass(value: string | null | undefined): string {
 }
 
 // Format a USD amount in the user's base currency (USD stays canonical on the wire).
+// When usdPerBase is not a usable rate (not finite or <= 0), fall back to showing
+// the raw USD value labelled as USD rather than silently treating the rate as 1.
 function fmtBase(
   usdValue: string | number | null | undefined,
   baseCcy: string,
@@ -70,15 +67,21 @@ function fmtBase(
   if (usdValue == null) return "—";
   const n = Number(usdValue);
   if (Number.isNaN(n)) return "—";
-  const inBase = usdPerBase > 0 ? n / usdPerBase : n;
+  const rateUsable = Number.isFinite(usdPerBase) && usdPerBase > 0;
+  const inBase = rateUsable ? n / usdPerBase : n;
+  const ccy = rateUsable ? baseCcy || "USD" : "USD";
   try {
     return inBase.toLocaleString("ru-RU", {
       style: "currency",
-      currency: baseCcy || "USD",
-      maximumFractionDigits: 0,
+      currency: ccy,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     });
   } catch {
-    return `${Math.round(inBase).toLocaleString("ru-RU")} ${baseCcy}`;
+    return `${inBase.toLocaleString("ru-RU", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })} ${ccy}`;
   }
 }
 
@@ -86,8 +89,20 @@ export function DashboardPage() {
   const t = useT();
   const labels = useAssetLabels();
   const navigate = useNavigate();
-  const { user, clear } = useAuth();
-  useQuery({ queryKey: ["me"], queryFn: fetchMe, initialData: user ?? undefined });
+  const { user, setUser, clear } = useAuth();
+  const meQuery = useQuery({
+    queryKey: ["me"],
+    queryFn: fetchMe,
+    initialData: user ?? undefined,
+  });
+  // Keep the persisted auth store fresh (email_verified, plan, base currency)
+  // when the server returns updated data. Guarded so it can't loop.
+  useEffect(() => {
+    const me = meQuery.data;
+    if (me && JSON.stringify(me) !== JSON.stringify(user)) {
+      setUser(me);
+    }
+  }, [meQuery.data, user, setUser]);
 
   const current = useQuery({
     queryKey: ["portfolio", "current"],
@@ -122,7 +137,7 @@ export function DashboardPage() {
     <div className="mx-auto max-w-4xl px-4 py-10">
       <header className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">КАПИТАЛЬ</h1>
-        <Button variant="outline" onClick={clear}>
+        <Button variant="outline" onClick={() => void logout().finally(clear)}>
           {t("Выйти", "Sign out")}
         </Button>
       </header>

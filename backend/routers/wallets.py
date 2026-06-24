@@ -27,11 +27,17 @@ def _graphs(request: Request):
     return graphs
 
 
-async def _wallet_out(w: Wallet) -> WalletOut:
+# Sentinel: distinguishes "no price was pre-resolved" (fetch it) from "price was
+# pre-resolved as None / unavailable" (don't re-fetch — that would defeat dedup).
+_UNSET = object()
+
+
+async def _wallet_out(w: Wallet, price: object = _UNSET) -> WalletOut:
     balance = await wallets_service.fetch_balance(w.chain, w.address)
     usd = None
     if balance is not None:
-        price = await market.usd_price_for_crypto(w.chain)
+        if price is _UNSET:
+            price = await market.usd_price_for_crypto(w.chain)
         if price is not None:
             usd = str((balance * price).quantize(Decimal("0.01")))
     return WalletOut(
@@ -54,7 +60,11 @@ async def list_wallets(
             select(Wallet).where(Wallet.user_id == current.id).order_by(Wallet.created_at.asc())
         )
     )
-    return [await _wallet_out(w) for w in rows]
+    # Resolve each chain's price once, not once per wallet (avoids N+1 lookups).
+    prices: dict[str, Decimal | None] = {}
+    for chain in {w.chain for w in rows}:
+        prices[chain] = await market.usd_price_for_crypto(chain)
+    return [await _wallet_out(w, prices.get(w.chain)) for w in rows]
 
 
 @router.post("", response_model=WalletOut, status_code=status.HTTP_201_CREATED)

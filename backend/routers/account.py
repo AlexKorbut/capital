@@ -22,8 +22,10 @@ from core.deps import get_current_user
 from models.advice import AdviceItem, AdviceSession
 from models.asset import Asset
 from models.billing import DebtRecord, SubscriptionEvent
+from models.goal import Goal
 from models.snapshot import Snapshot
 from models.user import User
+from models.wallet import Wallet
 from schemas.account import DeleteAccountRequest
 
 router = APIRouter(prefix="/account", tags=["account"])
@@ -169,6 +171,8 @@ async def export_account(
             )
         )
     )
+    wallets = list(await db.scalars(select(Wallet).where(Wallet.user_id == uid)))
+    goals = list(await db.scalars(select(Goal).where(Goal.user_id == uid)))
 
     user_row = _row(current)
     user_row.pop("password_hash", None)  # never export the secret
@@ -182,6 +186,8 @@ async def export_account(
         "advice_items": [_row(i) for i in items],
         "subscription_events": [_row(e) for e in sub_events],
         "debt_records": [_row(d) for d in debts],
+        "wallets": [_row(w) for w in wallets],
+        "goals": [_row(g) for g in goals],
     }
 
 
@@ -207,6 +213,8 @@ async def delete_account(
     await db.execute(delete(AdviceSession).where(AdviceSession.user_id == uid))
     await db.execute(delete(Asset).where(Asset.user_id == uid))
     await db.execute(delete(Snapshot).where(Snapshot.user_id == uid))
+    await db.execute(delete(Wallet).where(Wallet.user_id == uid))
+    await db.execute(delete(Goal).where(Goal.user_id == uid))
     await db.execute(delete(SubscriptionEvent).where(SubscriptionEvent.user_id == uid))
     await db.execute(
         delete(DebtRecord).where(

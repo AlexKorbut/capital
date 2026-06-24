@@ -79,14 +79,16 @@ def _violates(text: str) -> bool:
 
 def _sanitize(insight: Insight) -> Insight:
     """If an insight slips prescriptive language, neutralise its framing."""
-    if _violates(insight.title) or _violates(insight.body):
+    # `relevance` is persisted and returned too, so it must be filtered as well.
+    if _violates(insight.title) or _violates(insight.body) or _violates(insight.relevance):
         logger.warning("advisor insight tripped banned-phrase filter; softening")
         softened = _BANNED_RE.sub("—", insight.body)
+        relevance = _BANNED_RE.sub("—", insight.relevance) if insight.relevance else insight.relevance
         return Insight(
             title="Наблюдение по структуре портфеля",
             category=insight.category,
             body=(softened + " (Текст автоматически приведён к нейтральной форме.)").strip(),
-            relevance=insight.relevance,
+            relevance=relevance,
         )
     return insight
 

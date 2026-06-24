@@ -1,6 +1,7 @@
 import { Globe } from "lucide-react";
 import type { BreakdownEntry } from "@/services/portfolio";
 import { useT } from "@/lib/i18n";
+import { formatUsd as usd } from "@/lib/utils";
 
 const FLAGS: Record<string, string> = {
   BY: "🇧🇾", GE: "🇬🇪", RU: "🇷🇺", PL: "🇵🇱", DE: "🇩🇪", US: "🇺🇸",
@@ -17,17 +18,6 @@ const COUNTRY_RU: Record<string, string> = {
   TR: "Турция", AM: "Армения",
 };
 
-function usd(v: string | null): string {
-  if (v == null) return "—";
-  const n = Number(v);
-  return Number.isNaN(n)
-    ? "—"
-    : n.toLocaleString("en-US", {
-        style: "currency",
-        currency: "USD",
-        maximumFractionDigits: 0,
-      });
-}
 
 export function GeoSection({ byCountry }: { byCountry: BreakdownEntry[] }) {
   const t = useT();

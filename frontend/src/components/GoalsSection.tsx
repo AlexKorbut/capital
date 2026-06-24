@@ -5,17 +5,7 @@ import { createGoal, deleteGoal, listGoals, type Goal } from "@/services/goals";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useT } from "@/lib/i18n";
-
-function usd(value: string | null | undefined): string {
-  if (value == null) return "—";
-  const n = Number(value);
-  if (Number.isNaN(n)) return "—";
-  return n.toLocaleString("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  });
-}
+import { formatUsd as usd } from "@/lib/utils";
 
 function GoalRow({ g, onDelete }: { g: Goal; onDelete: (id: string) => void }) {
   const t = useT();

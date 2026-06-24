@@ -61,6 +61,8 @@ def mock_llm(monkeypatch):
     monkeypatch.setattr(
         geo_service, "structured", lambda *a, **k: _FakeRunnable(GeoObservations())
     )
+    # Exercise the real (mocked-LLM) path, not the demo short-circuit.
+    monkeypatch.setattr(advisor_service.settings, "anthropic_api_key", "test-key")
 
 
 async def test_generate_advice_sanitizes_and_disclaims(mock_llm):

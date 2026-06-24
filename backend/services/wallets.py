@@ -11,7 +11,9 @@ portfolio as ``crypto`` ``AssetItem``s priced by the existing market service.
 from __future__ import annotations
 
 import logging
+import re
 from decimal import Decimal
+from typing import Optional
 
 import httpx
 
@@ -35,7 +37,19 @@ async def _get_json(url: str, params: dict | None = None):
         return r.json()
 
 
+# BTC addresses: legacy/P2SH base58 (1.../3...) or bech32 (bc1...). Conservative
+# charset check — alphanumeric only, no '/', no whitespace — so the address can
+# never break out of the explorer URL path.
+_BTC_ADDRESS_RE = re.compile(r"^(?:[13][a-km-zA-HJ-NP-Z1-9]{25,39}|bc1[a-z0-9]{11,87})$")
+# ETH: 0x + 40 hex. TON: base64url-ish, 48 chars typical (allow '-'/'_').
+_ETH_ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
+_TON_ADDRESS_RE = re.compile(r"^[A-Za-z0-9_-]{48,68}$")
+
+
 async def _btc_balance(address: str) -> Decimal | None:
+    if not _BTC_ADDRESS_RE.match(address):
+        logger.warning("rejecting malformed BTC address")
+        return None
     data = await _get_json(f"https://blockstream.info/api/address/{address}")
     stats = data.get("chain_stats") or {}
     funded = stats.get("funded_txo_sum")
@@ -47,6 +61,10 @@ async def _btc_balance(address: str) -> Decimal | None:
 
 
 async def _eth_balance(address: str) -> Decimal | None:
+    # ETH address is also interpolated into the URL path — validate the format.
+    if not _ETH_ADDRESS_RE.match(address):
+        logger.warning("rejecting malformed ETH address")
+        return None
     data = await _get_json(
         f"https://api.ethplorer.io/getAddressInfo/{address}", {"apiKey": "freekey"}
     )
@@ -55,6 +73,10 @@ async def _eth_balance(address: str) -> Decimal | None:
 
 
 async def _ton_balance(address: str) -> Decimal | None:
+    # TON uses a query param (safer) but apply a basic sanity check anyway.
+    if not _TON_ADDRESS_RE.match(address):
+        logger.warning("rejecting malformed TON address")
+        return None
     data = await _get_json(
         "https://toncenter.com/api/v2/getAddressBalance", {"address": address}
     )
@@ -67,7 +89,7 @@ async def _ton_balance(address: str) -> Decimal | None:
 _FETCHERS = {"BTC": _btc_balance, "ETH": _eth_balance, "TON": _ton_balance}
 
 
-async def fetch_balance(chain: str, address: str) -> Decimal | None:
+async def fetch_balance(chain: str, address: str) -> Optional[Decimal]:
     chain = (chain or "").upper()
     address = (address or "").strip()
     if chain not in _FETCHERS or not address:
@@ -78,8 +100,9 @@ async def fetch_balance(chain: str, address: str) -> Decimal | None:
         return await _FETCHERS[chain](address)
     except httpx.HTTPError as e:
         logger.warning("wallet balance fetch failed (%s %s): %s", chain, address, e)
-        # Fall back to demo so the UI still shows something testable.
-        return _DEMO_BALANCES.get(chain)
+        # In production we never fabricate a balance — fail soft with None so the
+        # caller can skip the wallet rather than persist a fake/zero asset.
+        return None
 
 
 def balance_to_asset(chain: str, balance: Decimal, address: str) -> AssetItem:

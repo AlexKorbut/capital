@@ -63,6 +63,15 @@ export async function logoutAll(): Promise<TokenPair> {
   return data;
 }
 
+/** Single-device sign-out: clears the server's refresh cookie (best-effort). */
+export async function logout(): Promise<void> {
+  try {
+    await api.post("/auth/logout", {});
+  } catch {
+    /* ignore — local state is cleared regardless */
+  }
+}
+
 export async function fetchMe(): Promise<User> {
   const { data } = await api.get<User>("/auth/me");
   return data;

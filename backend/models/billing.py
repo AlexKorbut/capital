@@ -12,6 +12,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column
@@ -47,6 +48,13 @@ class DebtRecord(Base):
 
 class SubscriptionEvent(Base):
     __tablename__ = "subscription_events"
+    # A provider event (provider + its unique ref) applies at most once — the DB
+    # constraint makes webhook idempotency race-safe under concurrent delivery.
+    __table_args__ = (
+        UniqueConstraint(
+            "payment_provider", "provider_ref", name="uq_subscription_events_provider_ref"
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(

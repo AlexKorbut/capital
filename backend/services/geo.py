@@ -48,7 +48,8 @@ Hard rules:
 
 def compute_exposure(assets: list[AssetItem]) -> list[dict[str, Any]]:
     """Country -> {usd_value, pct} sorted desc. Ignores unpriced assets."""
-    by_country: dict[str, Decimal] = {}
+    by_country: dict[str, Decimal] = {}        # signed value, for display
+    by_country_exposure: dict[str, Decimal] = {}  # abs value, for the share math
     total = Decimal(0)
     for a in assets:
         if a.usd_value is None:
@@ -57,11 +58,15 @@ def compute_exposure(assets: list[AssetItem]) -> list[dict[str, Any]]:
         # share but keep signed value for display.
         country = a.country or "—"
         by_country[country] = by_country.get(country, Decimal(0)) + a.usd_value
-        total += a.usd_value
+        by_country_exposure[country] = (
+            by_country_exposure.get(country, Decimal(0)) + abs(a.usd_value)
+        )
+        total += abs(a.usd_value)
 
     rows: list[dict[str, Any]] = []
     for country, value in by_country.items():
-        pct = (value / total * Decimal(100)) if total and total != 0 else None
+        exposure = by_country_exposure.get(country, Decimal(0))
+        pct = (exposure / total * Decimal(100)) if total and total != 0 else None
         rows.append(
             {
                 "country": country,

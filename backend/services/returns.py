@@ -44,9 +44,11 @@ _WINDOWS: list[tuple[str, str, int | None]] = [
 
 
 def _pct(curr: Decimal, base: Decimal) -> str | None:
-    if base == 0:
+    # A meaningful percent change requires a positive baseline; a non-positive
+    # baseline (zero or net debt) has no sensible denominator.
+    if base <= 0:
         return None
-    return str(((curr - base) / abs(base) * Decimal(100)).quantize(Decimal("0.1")))
+    return str(((curr - base) / base * Decimal(100)).quantize(Decimal("0.1")))
 
 
 async def compute_returns(db: AsyncSession, user_id) -> dict | None:

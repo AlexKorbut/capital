@@ -1,8 +1,6 @@
 """Срез 4 — file processor routing (CSV pure; image -> vision mocked)."""
 from __future__ import annotations
 
-import pytest
-
 
 async def test_csv_bytes_decoded_to_text():
     from services.file_processor import process_file
@@ -23,6 +21,8 @@ async def test_image_routes_to_vision(monkeypatch):
             return _FakeMsg()
 
     monkeypatch.setattr(fp, "get_model", lambda *a, **k: _FakeModel())
+    # Exercise the real (mocked-model) vision path, not the demo short-circuit.
+    monkeypatch.setattr(fp.settings, "anthropic_api_key", "test-key")
 
     text = await fp.process_file(b"\x89PNG\r\n\x1a\n", mime_type="image/png", filename="s.png")
     assert text == "cash 1000 EUR в Минске"

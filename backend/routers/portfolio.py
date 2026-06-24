@@ -54,6 +54,10 @@ from services import portfolio_edit, portfolio_read, returns as returns_service
 
 router = APIRouter(prefix="/portfolio", tags=["portfolio"])
 
+# Hard cap on uploaded file size: xlsx goes to pandas/openpyxl, so an unbounded
+# read is a zip-bomb / OOM DoS vector. Reject oversized payloads up front.
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
 
 def _graphs(request: Request) -> runners.GraphRegistry:
     graphs = getattr(request.app.state, "graphs", None)
@@ -130,6 +134,8 @@ async def portfolio_input_upload(
     raw = await file.read()
     if not raw:
         raise HTTPException(status_code=400, detail="Пустой файл")
+    if len(raw) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File too large")
 
     thread_id = str(uuid.uuid4())
     ccy = (base_currency or current.base_currency or "USD").upper()
@@ -190,6 +196,8 @@ async def portfolio_import(
     raw = await file.read()
     if not raw:
         raise HTTPException(status_code=400, detail="Пустой файл")
+    if len(raw) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File too large")
 
     seeded = parse_table_bytes(raw, filename=file.filename or "")
     if not seeded:

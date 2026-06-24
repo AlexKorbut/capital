@@ -17,7 +17,7 @@ import {
   openBillingPortal,
 } from "@/services/billing";
 import { exportAccount, deleteAccount } from "@/services/account";
-import { requestVerification } from "@/services/auth";
+import { logout, requestVerification } from "@/services/auth";
 import { useAuth } from "@/store/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -349,7 +349,7 @@ export function SettingsPage() {
       </section>
 
       <section className="mt-6">
-        <Button variant="outline" onClick={clear} className="w-full">
+        <Button variant="outline" onClick={() => void logout().finally(clear)} className="w-full">
           {t("Выйти", "Sign out")}
         </Button>
       </section>

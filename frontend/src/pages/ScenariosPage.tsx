@@ -5,6 +5,7 @@ import { AxiosError } from "axios";
 import { simulateScenario, type ScenarioResponse } from "@/services/scenario";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/lib/i18n";
+import { formatUsd as usd } from "@/lib/utils";
 
 const EXAMPLE = "что если продам биткоин и переложу всё в евро?";
 const EXAMPLE_EN = "what if I sell Bitcoin and move everything into euros?";
@@ -16,16 +17,6 @@ function errMessage(e: unknown): string {
   return e instanceof Error ? e.message : "Не удалось смоделировать сценарий";
 }
 
-function usd(value: string | null | undefined): string {
-  if (value == null) return "—";
-  const n = Number(value);
-  if (Number.isNaN(n)) return "—";
-  return n.toLocaleString("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  });
-}
 
 function Delta({ result }: { result: ScenarioResponse }) {
   const t = useT();

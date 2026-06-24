@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from agents.state import AdvisorState, InputState, ScenarioState
+from agents.state import InputState, ScenarioState
 from services import enrichment as enrichment_service
 
 # --- Supervisor (agent #1): chooses which pipeline an input belongs to --------

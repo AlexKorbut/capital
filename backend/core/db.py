@@ -27,6 +27,19 @@ engine = create_async_engine(
     pool_pre_ping=not settings.is_sqlite,
 )
 
+if settings.is_sqlite:
+    # SQLite disables foreign-key enforcement by default, which silently turns
+    # every ondelete="CASCADE" into a no-op (orphaned rows, GDPR-delete leaks).
+    # Re-enable it on every new DBAPI connection.
+    from sqlalchemy import event
+
+    @event.listens_for(engine.sync_engine, "connect")
+    def _enable_sqlite_fk(dbapi_conn, _record):  # noqa: ANN001
+        cursor = dbapi_conn.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+
 SessionLocal = async_sessionmaker(
     bind=engine,
     class_=AsyncSession,

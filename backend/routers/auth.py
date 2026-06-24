@@ -12,10 +12,11 @@ and mis-reads it as a query param (422). Eager (real-object) annotations avoid t
 """
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.config import settings
 from core.crypto import decrypt, encrypt
 from core.db import get_db
 from core.deps import get_current_user
@@ -25,7 +26,7 @@ from core.totp import (
     generate_secret,
     hash_recovery_code,
     provisioning_uri,
-    verify_totp,
+    verify_totp_step,
 )
 from core.security import (
     create_access_token,
@@ -33,6 +34,7 @@ from core.security import (
     create_refresh_token,
     create_verification_token,
     decode_email_token,
+    decode_email_token_payload,
     decode_token,
     hash_password,
     verify_password,
@@ -65,19 +67,48 @@ from services.email import (
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-def _tokens_for(user: User) -> TokenPair:
+# The long-lived refresh token lives ONLY in this httpOnly cookie, never in the
+# response body — so an XSS payload can't read it from JS/localStorage. Scoped to
+# the auth path (derived from the shared API prefix) so it isn't sent with every
+# API request and can't drift out of sync with the mounted route URLs.
+_REFRESH_COOKIE = "kapital_refresh"
+_REFRESH_COOKIE_PATH = f"{settings.api_prefix}/auth"
+
+
+def _set_refresh_cookie(response: Response, token: str) -> None:
+    samesite = settings.cookie_samesite
+    response.set_cookie(
+        key=_REFRESH_COOKIE,
+        value=token,
+        httponly=True,
+        # SameSite=None is only valid alongside Secure; otherwise require HTTPS
+        # only in prod (dev is http).
+        secure=settings.is_prod or samesite == "none",
+        samesite=samesite,
+        path=_REFRESH_COOKIE_PATH,
+        max_age=settings.refresh_token_ttl_days * 86400,
+    )
+
+
+def _clear_refresh_cookie(response: Response) -> None:
+    response.delete_cookie(_REFRESH_COOKIE, path=_REFRESH_COOKIE_PATH)
+
+
+def _issue_tokens(user: User, response: Response) -> TokenPair:
+    """Mint an access token (body) + refresh token (httpOnly cookie only)."""
     sub = str(user.id)
     tv = int(user.token_version or 0)
-    return TokenPair(
-        access_token=create_access_token(sub, tv),
-        refresh_token=create_refresh_token(sub, tv),
-    )
+    _set_refresh_cookie(response, create_refresh_token(sub, tv))
+    return TokenPair(access_token=create_access_token(sub, tv), refresh_token="")
 
 
 @router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
 @limiter.limit(AUTH_LIMIT)
 async def register(
-    request: Request, body: RegisterRequest, db: AsyncSession = Depends(get_db)
+    request: Request,
+    response: Response,
+    body: RegisterRequest,
+    db: AsyncSession = Depends(get_db),
 ) -> AuthResponse:
     existing = await db.scalar(select(User).where(User.email == body.email))
     if existing is not None:
@@ -103,13 +134,18 @@ async def register(
     except Exception:  # noqa: BLE001 - delivery must not fail signup
         pass
 
-    return AuthResponse(user=UserOut.model_validate(user), tokens=_tokens_for(user))
+    return AuthResponse(
+        user=UserOut.model_validate(user), tokens=_issue_tokens(user, response)
+    )
 
 
 @router.post("/login", response_model=AuthResponse)
 @limiter.limit(AUTH_LIMIT)
 async def login(
-    request: Request, body: LoginRequest, db: AsyncSession = Depends(get_db)
+    request: Request,
+    response: Response,
+    body: LoginRequest,
+    db: AsyncSession = Depends(get_db),
 ) -> AuthResponse:
     user = await db.scalar(select(User).where(User.email == body.email))
     if user is None or not user.password_hash or not verify_password(
@@ -137,18 +173,36 @@ async def login(
         user.settings = s
     await db.commit()
 
-    return AuthResponse(user=UserOut.model_validate(user), tokens=_tokens_for(user))
+    return AuthResponse(
+        user=UserOut.model_validate(user), tokens=_issue_tokens(user, response)
+    )
 
 
 @router.post("/refresh", response_model=TokenPair)
-async def refresh(body: RefreshRequest, db: AsyncSession = Depends(get_db)) -> TokenPair:
+async def refresh(
+    request: Request,
+    response: Response,
+    body: RefreshRequest | None = None,
+    db: AsyncSession = Depends(get_db),
+) -> TokenPair:
+    # Prefer the httpOnly cookie; fall back to the body for non-browser clients.
+    token = request.cookies.get(_REFRESH_COOKIE) or (body.refresh_token if body else None)
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing refresh token"
+        )
     try:
-        payload = decode_token(body.refresh_token, expected_type="refresh")
+        payload = decode_token(token, expected_type="refresh")
     except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token"
         )
-    user = await db.get(User, uuid.UUID(payload["sub"]))
+    try:
+        user = await db.get(User, uuid.UUID(payload["sub"]))
+    except (ValueError, KeyError, TypeError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token"
+        )
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="User no longer exists"
@@ -157,7 +211,7 @@ async def refresh(body: RefreshRequest, db: AsyncSession = Depends(get_db)) -> T
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Session revoked"
         )
-    return _tokens_for(user)
+    return _issue_tokens(user, response)
 
 
 @router.get("/me", response_model=UserOut)
@@ -186,8 +240,9 @@ async def request_verification(
 
 
 @router.post("/verify-email/confirm", response_model=MessageResponse)
+@limiter.limit(AUTH_LIMIT)
 async def confirm_verification(
-    body: TokenOnlyRequest, db: AsyncSession = Depends(get_db)
+    request: Request, body: TokenOnlyRequest, db: AsyncSession = Depends(get_db)
 ) -> MessageResponse:
     try:
         sub = decode_email_token(body.token, purpose="email_verify")
@@ -221,7 +276,10 @@ async def forgot_password(
     if user is not None and user.password_hash:
         try:
             await send_password_reset_email(
-                to=user.email, token=create_password_reset_token(str(user.id))
+                to=user.email,
+                token=create_password_reset_token(
+                    str(user.id), int(user.token_version or 0)
+                ),
             )
         except Exception:  # noqa: BLE001
             pass
@@ -236,13 +294,20 @@ async def reset_password(
     request: Request, body: PasswordResetRequest, db: AsyncSession = Depends(get_db)
 ) -> MessageResponse:
     try:
-        sub = decode_email_token(body.token, purpose="password_reset")
-        user = await db.get(User, uuid.UUID(sub))
-    except (JWTError, ValueError):
+        payload = decode_email_token_payload(body.token, purpose="password_reset")
+        user = await db.get(User, uuid.UUID(payload["sub"]))
+    except (JWTError, ValueError, KeyError):
         raise HTTPException(status_code=400, detail="Недействительная или истёкшая ссылка.")
     if user is None:
         raise HTTPException(status_code=400, detail="Пользователь не найден.")
+    # Single-use: the token is bound to the version it was issued at. Reject a
+    # token whose version is stale (already-used reset, or sessions since revoked).
+    if int(payload.get("tv", 0)) != int(user.token_version or 0):
+        raise HTTPException(status_code=400, detail="Недействительная или истёкшая ссылка.")
     user.password_hash = hash_password(body.password)
+    # Invalidate every existing session AND this reset token (a stolen session
+    # must not survive a password reset).
+    user.token_version = int(user.token_version or 0) + 1
     await db.commit()
     return MessageResponse(message="Пароль обновлён.")
 
@@ -254,8 +319,16 @@ async def _consume_second_factor(db: AsyncSession, user: User, code: str) -> boo
     """Validate a TOTP code or burn a one-time recovery code. Commits on use."""
     code = (code or "").strip()
     secret = decrypt(user.totp_secret) if user.totp_secret else None
-    if secret and verify_totp(secret, code):
-        return True
+    if secret:
+        step = verify_totp_step(secret, code)
+        if step is not None:
+            # Block replay: a code's step must be newer than the last consumed.
+            last = user.totp_last_used_step
+            if last is not None and step <= last:
+                return False
+            user.totp_last_used_step = step
+            await db.commit()
+            return True
     # Recovery code fallback (single-use).
     settings_dict = dict(user.settings or {})
     codes: list[str] = list(settings_dict.get("totp_recovery", []))
@@ -276,8 +349,11 @@ async def twofa_status(current: User = Depends(get_current_user)) -> TwoFAStatus
 
 
 @router.post("/2fa/setup", response_model=TwoFASetupResponse)
+@limiter.limit(AUTH_LIMIT)
 async def twofa_setup(
-    current: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+    request: Request,
+    current: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ) -> TwoFASetupResponse:
     """Generate a fresh secret (stored, not yet enabled) and an otpauth URI."""
     if current.totp_enabled:
@@ -291,7 +367,9 @@ async def twofa_setup(
 
 
 @router.post("/2fa/enable", response_model=TwoFAEnableResponse)
+@limiter.limit(AUTH_LIMIT)
 async def twofa_enable(
+    request: Request,
     body: TwoFAEnableRequest,
     current: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -300,8 +378,11 @@ async def twofa_enable(
     secret = decrypt(current.totp_secret) if current.totp_secret else None
     if not secret:
         raise HTTPException(status_code=400, detail="Сначала вызовите /2fa/setup.")
-    if not verify_totp(secret, body.code):
+    step = verify_totp_step(secret, body.code)
+    if step is None:
         raise HTTPException(status_code=400, detail="Неверный код.")
+    # Burn the enrolment code so it can't be replayed at login.
+    current.totp_last_used_step = step
 
     recovery = generate_recovery_codes()
     settings_dict = dict(current.settings or {})
@@ -313,7 +394,9 @@ async def twofa_enable(
 
 
 @router.post("/2fa/disable", response_model=MessageResponse)
+@limiter.limit(AUTH_LIMIT)
 async def twofa_disable(
+    request: Request,
     body: CodeRequest,
     current: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -324,6 +407,7 @@ async def twofa_disable(
         raise HTTPException(status_code=400, detail="Неверный код.")
     current.totp_enabled = False
     current.totp_secret = None
+    current.totp_last_used_step = None
     settings_dict = dict(current.settings or {})
     settings_dict.pop("totp_recovery", None)
     current.settings = settings_dict
@@ -333,9 +417,18 @@ async def twofa_disable(
 
 @router.post("/logout-all", response_model=TokenPair)
 async def logout_all(
-    current: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+    response: Response,
+    current: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ) -> TokenPair:
     """Invalidate every existing token (all devices) and issue a fresh pair."""
     current.token_version = int(current.token_version or 0) + 1
     await db.commit()
-    return _tokens_for(current)
+    return _issue_tokens(current, response)
+
+
+@router.post("/logout", response_model=MessageResponse)
+async def logout(response: Response) -> MessageResponse:
+    """Clear the refresh cookie for this browser (single-device sign-out)."""
+    _clear_refresh_cookie(response)
+    return MessageResponse(message="Вы вышли из системы.")

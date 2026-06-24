@@ -34,6 +34,29 @@ async def db_ready():
         await conn.run_sync(Base.metadata.drop_all)
 
 
+@pytest.fixture
+def non_demo(monkeypatch):
+    """Force the real (non-demo) code path by supplying a provider key.
+
+    Without this, the test env (no keys, ENVIRONMENT=development) auto-enables
+    demo mode, which short-circuits LLM calls and relaxes webhook fail-closed.
+    """
+    from core.config import settings
+
+    monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
+
+
+@pytest.fixture(autouse=True)
+def _no_rate_limit(monkeypatch):
+    """Disable rate limiting by default — the in-memory limiter bucket is shared
+    across the whole suite (same client IP), so accumulated auth calls would
+    otherwise trip 429 in later tests. The dedicated rate-limit test re-enables it.
+    """
+    from core.ratelimit import limiter
+
+    monkeypatch.setattr(limiter, "enabled", False)
+
+
 @pytest.fixture(autouse=True)
 def _offline_market(monkeypatch):
     """No network in tests: market lookups return None unless a test overrides.
