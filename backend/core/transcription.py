@@ -9,6 +9,7 @@ import io
 from typing import Protocol
 
 from core.config import settings
+from core.llm import api_key_for
 
 
 class Transcriber(Protocol):
@@ -49,11 +50,13 @@ class DemoTranscriber:
 
 def get_transcriber() -> Transcriber:
     # No OpenAI key (or explicit demo) -> deterministic stub, no network call.
-    if settings.is_demo or not settings.openai_api_key:
+    # BYOK: the user's own OpenAI key (mode "own") or the server key.
+    openai_key = api_key_for("openai")
+    if settings.demo_mode or not openai_key:
         return DemoTranscriber()
     if settings.stt_provider == "openai":
         return OpenAIWhisperTranscriber(
-            api_key=settings.openai_api_key, language=settings.stt_language
+            api_key=openai_key, language=settings.stt_language
         )
     # Placeholders for future providers (local faster-whisper, groq).
     raise NotImplementedError(

@@ -181,3 +181,30 @@ async def health() -> dict[str, object]:
         "graphs": sorted(getattr(app.state, "graphs", {})),
         "observability": _OBS,
     }
+
+
+@app.get(f"{API_PREFIX}/module", tags=["meta"])
+async def module_manifest() -> dict[str, object]:
+    """Module manifest for hosts that embed KAPITAL (e.g. Jarvis).
+
+    Public and static: a host reads it once to learn how to talk to us —
+    where the API lives, how to authenticate (a personal API token minted in
+    Settings), where to poll health and where the OpenAPI schema is.
+    """
+    return {
+        "name": "kapital",
+        "title": "КАПИТАЛЬ",
+        "version": app.version,
+        "api_prefix": API_PREFIX,
+        "auth": {"scheme": "bearer", "token_prefix": "kp_", "setup_path": "/settings"},
+        "health": f"{API_PREFIX}/health",
+        "openapi": "/openapi.json",
+        "capabilities": [
+            "portfolio.read",
+            "portfolio.write",
+            "goals",
+            "advice",
+            "scenarios",
+            "wallets",
+        ],
+    }

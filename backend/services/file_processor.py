@@ -16,8 +16,7 @@ import base64
 import io
 import logging
 
-from core.config import settings
-from core.llm import ModelRole, get_model
+from core.llm import ModelRole, get_model, is_demo_for
 
 logger = logging.getLogger("kapital.file_processor")
 
@@ -52,7 +51,7 @@ def _flatten_content(content) -> str:
 
 
 async def _image_to_text(raw_bytes: bytes, mime_type: str) -> str:
-    if settings.is_demo:
+    if is_demo_for(ModelRole.VISION):
         from core.demo import DEMO_VISION_TEXT
         return DEMO_VISION_TEXT
     b64 = base64.b64encode(raw_bytes).decode("ascii")

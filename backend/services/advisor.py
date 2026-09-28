@@ -19,8 +19,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from agents.state import AssetItem
-from core.config import settings
-from core.llm import ModelRole, structured
+from core.llm import ModelRole, is_demo_for, structured
 from models.advice import DISCLAIMER
 
 logger = logging.getLogger("kapital.advisor")
@@ -122,7 +121,7 @@ async def generate_advice(
     if not assets:
         return []
 
-    if settings.is_demo:
+    if is_demo_for(ModelRole.ADVISOR):
         from core.demo import demo_advice
         return [
             {**ins, "disclaimer": DISCLAIMER}

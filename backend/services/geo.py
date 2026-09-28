@@ -18,8 +18,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from agents.state import AssetItem
-from core.config import settings
-from core.llm import ModelRole, structured
+from core.llm import ModelRole, is_demo_for, structured
 
 logger = logging.getLogger("kapital.geo")
 
@@ -77,7 +76,7 @@ async def analyze_geo(assets: list[AssetItem]) -> dict[str, Any]:
     exposure = compute_exposure(assets)
     observations: list[dict[str, str]] = []
 
-    if exposure and settings.is_demo:
+    if exposure and is_demo_for(ModelRole.ADVISOR):
         from core.demo import demo_geo_observations
         return {"exposure": exposure, "observations": demo_geo_observations(exposure)}
 

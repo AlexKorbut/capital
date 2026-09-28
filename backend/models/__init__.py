@@ -8,6 +8,7 @@ from __future__ import annotations
 from core.db import Base
 
 from .advice import AdviceItem, AdviceSession
+from .api_token import ApiToken
 from .asset import Asset
 from .billing import DebtRecord, SubscriptionEvent
 from .goal import Goal
@@ -33,4 +34,5 @@ __all__ = [
     "SubscriptionEvent",
     "Goal",
     "Wallet",
+    "ApiToken",
 ]

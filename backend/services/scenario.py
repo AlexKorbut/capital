@@ -19,8 +19,7 @@ from typing import Any, Literal, Optional
 from pydantic import BaseModel, Field
 
 from agents.state import AssetItem, AssetType
-from core.config import settings
-from core.llm import ModelRole, structured
+from core.llm import ModelRole, is_demo_for, structured
 
 logger = logging.getLogger("kapital.scenario")
 
@@ -95,7 +94,7 @@ async def parse_changes(
     if not text:
         return ScenarioChanges(changes=[], summary="Пустой сценарий.")
 
-    if settings.is_demo:
+    if is_demo_for(ModelRole.SCENARIO):
         from core.demo import demo_scenario_changes
         return ScenarioChanges.model_validate(demo_scenario_changes(text, assets))
 

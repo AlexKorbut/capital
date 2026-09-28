@@ -26,6 +26,8 @@ import { SecuritySection } from "@/components/SecuritySection";
 import { BeneficiarySection } from "@/components/BeneficiarySection";
 import { CurrencySection } from "@/components/CurrencySection";
 import { LanguageSection } from "@/components/LanguageSection";
+import { AiSection } from "@/components/AiSection";
+import { ApiTokensSection } from "@/components/ApiTokensSection";
 import { useT } from "@/lib/i18n";
 
 function fmtDate(iso: string | null): string {
@@ -180,8 +182,14 @@ export function SettingsPage() {
       {/* Base/display currency */}
       <CurrencySection />
 
+      {/* AI: KAPITAL AI or your own provider keys */}
+      <AiSection />
+
       {/* Security: 2FA + sessions */}
       <SecuritySection />
+
+      {/* Personal API tokens for machine clients (Jarvis) */}
+      <ApiTokensSection />
 
       {/* Trusted contact / inheritance */}
       <BeneficiarySection />

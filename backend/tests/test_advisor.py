@@ -61,6 +61,9 @@ def mock_llm(monkeypatch):
     monkeypatch.setattr(
         geo_service, "structured", lambda *a, **k: _FakeRunnable(GeoObservations())
     )
+    # No provider key in tests → these roles would run as demo stubs; force the real path.
+    monkeypatch.setattr(advisor_service, "is_demo_for", lambda role: False)
+    monkeypatch.setattr(geo_service, "is_demo_for", lambda role: False)
 
 
 async def test_generate_advice_sanitizes_and_disclaims(mock_llm):

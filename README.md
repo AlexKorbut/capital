@@ -61,6 +61,21 @@ All runtime config is in `backend/.env` (copy from `.env.example`). Never commit
 secrets — `.env` is gitignored. Keep `#` comments on their own line (dotenv pulls
 an inline comment after `KEY=` into the value).
 
+## Running as a module of a host (Jarvis)
+
+KAPITAL stays a standalone app; a host such as **Jarvis** runs it as a process
+and talks to it over HTTP. The contract is small and host-agnostic — see
+[`docs/JARVIS-MODULE.md`](docs/JARVIS-MODULE.md):
+
+- `GET /api/v1/module` — public manifest (API prefix, auth scheme, health, OpenAPI).
+- **Personal API tokens** (Settings → API tokens, `POST /api/v1/account/tokens`):
+  `Authorization: Bearer kp_…` works on every user endpoint; shown once, stored hashed,
+  revoked explicitly (not by "log out everywhere").
+- **Bring your own keys** (Settings → AI, `PUT /api/v1/account/ai`): each user can
+  switch from KAPITAL AI to their own Anthropic/OpenAI/Google/Groq keys, stored
+  encrypted (`FERNET_KEY`) and returned masked. In `own` mode the server keys are
+  never used; a missing key means demo output for that role.
+
 ## Disclaimer
 
 КАПИТАЛЬ is a tracking and analytics tool, **not** a financial, investment, tax or

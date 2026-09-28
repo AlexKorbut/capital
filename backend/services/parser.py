@@ -10,8 +10,7 @@ so swapping Anthropic for OpenAI/Google/Ollama is a one-line ``.env`` change.
 from __future__ import annotations
 
 from agents.state import ParsedPortfolio
-from core.config import settings
-from core.llm import ModelRole, structured
+from core.llm import ModelRole, is_demo_for, structured
 
 # --- Prompt -------------------------------------------------------------------
 
@@ -77,7 +76,7 @@ async def parse_text(text: str, base_currency: str = "USD") -> ParsedPortfolio:
             parser_notes="Empty input — nothing to parse.",
         )
 
-    if settings.is_demo:
+    if is_demo_for(ModelRole.PARSER):
         from core.demo import demo_parse
         return demo_parse(text, base_currency)
 

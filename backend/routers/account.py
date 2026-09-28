@@ -8,18 +8,30 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from core.config import settings
+from core.crypto import encrypt
 from core.db import get_db
 from core.deps import get_current_user
+from core.llm import (
+    PROVIDERS,
+    ModelRole,
+    is_demo_for,
+    mask_key,
+    set_user_ai,
+    user_ai_from_settings,
+)
+from core.tokens import generate_token, hash_token, visible_prefix
 from models.advice import AdviceItem, AdviceSession
+from models.api_token import ApiToken
 from models.asset import Asset
 from models.billing import DebtRecord, SubscriptionEvent
 from models.snapshot import Snapshot
@@ -203,6 +215,7 @@ async def delete_account(
 
     uid = current.id
     # Delete children first (explicit — don't rely on SQLite FK cascade being on).
+    await db.execute(delete(ApiToken).where(ApiToken.user_id == uid))
     await db.execute(delete(AdviceItem).where(AdviceItem.user_id == uid))
     await db.execute(delete(AdviceSession).where(AdviceSession.user_id == uid))
     await db.execute(delete(Asset).where(Asset.user_id == uid))
@@ -216,3 +229,186 @@ async def delete_account(
     await db.execute(delete(User).where(User.id == uid))
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# --- Personal API tokens (machine clients such as Jarvis) ----------------------
+
+
+class ApiTokenCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+
+
+class ApiTokenOut(BaseModel):
+    id: UUID
+    name: str
+    prefix: str
+    created_at: datetime
+    last_used_at: datetime | None = None
+
+
+class ApiTokenCreated(ApiTokenOut):
+    # The plaintext token — returned exactly once at creation, never stored.
+    token: str
+
+
+def _token_out(row: ApiToken) -> ApiTokenOut:
+    return ApiTokenOut(
+        id=row.id,
+        name=row.name,
+        prefix=row.prefix,
+        created_at=row.created_at,
+        last_used_at=row.last_used_at,
+    )
+
+
+@router.get("/tokens", response_model=list[ApiTokenOut])
+async def list_tokens(
+    current: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[ApiTokenOut]:
+    """Active personal API tokens of the caller (revoked ones are not listed)."""
+    rows = await db.scalars(
+        select(ApiToken)
+        .where(ApiToken.user_id == current.id, ApiToken.revoked_at.is_(None))
+        .order_by(ApiToken.created_at)
+    )
+    return [_token_out(r) for r in rows.all()]
+
+
+@router.post("/tokens", response_model=ApiTokenCreated, status_code=status.HTTP_201_CREATED)
+async def create_token(
+    body: ApiTokenCreate,
+    current: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ApiTokenCreated:
+    """Mint a personal API token. The plaintext is shown once — copy it now."""
+    plain = generate_token()
+    row = ApiToken(
+        user_id=current.id,
+        name=body.name.strip(),
+        token_hash=hash_token(plain),
+        prefix=visible_prefix(plain),
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return ApiTokenCreated(
+        id=row.id,
+        name=row.name,
+        prefix=row.prefix,
+        created_at=row.created_at,
+        last_used_at=None,
+        token=plain,
+    )
+
+
+@router.delete(
+    "/tokens/{token_id}", status_code=status.HTTP_204_NO_CONTENT, response_class=Response
+)
+async def revoke_token(
+    token_id: UUID,
+    current: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """Revoke a token. Unknown, foreign or already-revoked tokens answer 404."""
+    row = await db.scalar(
+        select(ApiToken).where(
+            ApiToken.id == token_id,
+            ApiToken.user_id == current.id,
+            ApiToken.revoked_at.is_(None),
+        )
+    )
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Token not found")
+    row.revoked_at = datetime.now(timezone.utc)
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# --- AI: bring your own keys or use KAPITAL's ---------------------------------
+
+
+class AiProviderOut(BaseModel):
+    provider: str
+    label: str
+    configured: bool
+    hint: str | None = None
+
+
+class AiSettingsOut(BaseModel):
+    mode: Literal["kapital", "own"]
+    providers: list[AiProviderOut]
+    # This server has its own provider keys (the "KAPITAL AI" option works).
+    server_ai_available: bool
+    # Would an LLM-backed request from this user run as a deterministic stub now?
+    demo: bool
+
+
+class AiSettingsUpdate(BaseModel):
+    mode: Literal["kapital", "own"] | None = None
+    # provider -> plaintext key; null or "" removes the stored key.
+    keys: dict[str, str | None] | None = None
+
+
+_MAX_KEY_LEN = 4096
+
+
+def _ai_out(current: User) -> AiSettingsOut:
+    ai = user_ai_from_settings(current.settings)
+    set_user_ai(ai)  # make `demo` reflect the (possibly just-saved) config
+    mode: Literal["kapital", "own"] = "own" if ai.mode == "own" else "kapital"
+    return AiSettingsOut(
+        mode=mode,
+        providers=[
+            AiProviderOut(
+                provider=p,
+                label=label,
+                configured=p in ai.keys,
+                hint=mask_key(ai.keys[p]) if p in ai.keys else None,
+            )
+            for p, label in PROVIDERS.items()
+        ],
+        server_ai_available=settings.llm_keys_present,
+        demo=is_demo_for(ModelRole.PARSER),
+    )
+
+
+@router.get("/ai", response_model=AiSettingsOut)
+async def get_ai_settings(current: User = Depends(get_current_user)) -> AiSettingsOut:
+    """AI mode and which provider keys are on file (masked; never the key itself)."""
+    return _ai_out(current)
+
+
+@router.put("/ai", response_model=AiSettingsOut)
+async def set_ai_settings(
+    body: AiSettingsUpdate,
+    current: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> AiSettingsOut:
+    """Switch between KAPITAL AI and your own keys; store keys encrypted at rest."""
+    s = dict(current.settings or {})
+    ai_cfg = dict(s.get("ai") or {})
+    stored = dict(ai_cfg.get("keys") or {})
+    if body.mode is not None:
+        ai_cfg["mode"] = body.mode
+    for provider, key in (body.keys or {}).items():
+        if provider not in PROVIDERS:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Unknown provider '{provider}'. Known: {', '.join(PROVIDERS)}",
+            )
+        value = (key or "").strip()
+        if not value:
+            stored.pop(provider, None)
+            continue
+        if len(value) > _MAX_KEY_LEN:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Key for '{provider}' is too long",
+            )
+        stored[provider] = encrypt(value)
+    ai_cfg["keys"] = stored
+    s["ai"] = ai_cfg
+    current.settings = s
+    await db.commit()
+    return _ai_out(current)

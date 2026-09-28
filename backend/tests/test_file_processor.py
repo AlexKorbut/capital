@@ -22,6 +22,8 @@ async def test_image_routes_to_vision(monkeypatch):
         async def ainvoke(self, _messages):
             return _FakeMsg()
 
+    # No provider key in tests → the vision role would run as a demo stub; force the real path.
+    monkeypatch.setattr(fp, "is_demo_for", lambda role: False)
     monkeypatch.setattr(fp, "get_model", lambda *a, **k: _FakeModel())
 
     text = await fp.process_file(b"\x89PNG\r\n\x1a\n", mime_type="image/png", filename="s.png")
