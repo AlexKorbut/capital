@@ -28,6 +28,7 @@ from routers import (
     advice,
     auth,
     billing,
+    finance,
     goals,
     legal,
     portfolio,
@@ -36,6 +37,7 @@ from routers import (
     webhooks,
 )
 from services import digest, inheritance, market
+from services.finance import FinanceError
 
 logging.basicConfig(level=logging.INFO if not settings.debug else logging.DEBUG)
 logger = logging.getLogger("kapital")
@@ -110,6 +112,12 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
 
 
+@app.exception_handler(FinanceError)
+async def finance_error_handler(request: Request, exc: FinanceError) -> JSONResponse:
+    """Finance business rules (404 not found, 409 conflict, 422 unprocessable)."""
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.message})
+
+
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """Turn any unhandled error into a 500 with a correlatable incident_id.
@@ -168,6 +176,7 @@ app.include_router(account.router, prefix=API_PREFIX)
 app.include_router(legal.router, prefix=API_PREFIX)
 app.include_router(goals.router, prefix=API_PREFIX)
 app.include_router(wallets.router, prefix=API_PREFIX)
+app.include_router(finance.router, prefix=API_PREFIX)
 
 
 @app.get("/health", tags=["meta"])
@@ -206,5 +215,8 @@ async def module_manifest() -> dict[str, object]:
             "advice",
             "scenarios",
             "wallets",
+            "finance.projects",
+            "finance.expenses",
+            "finance.reports",
         ],
     }

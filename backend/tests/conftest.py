@@ -50,3 +50,55 @@ def _offline_market(monkeypatch):
 
     monkeypatch.setattr(market, "usd_rate_for_currency", _no_fx)
     monkeypatch.setattr(market, "usd_price_for_crypto", _no_crypto)
+
+    # The historical-FX path (services.fx_history) talks to the providers through
+    # market._http_get_json directly: fail fast offline instead of reaching the net.
+    import httpx
+
+    async def _offline_http(url: str, params: dict | None = None):
+        raise httpx.ConnectError("offline in tests")
+
+    async def _offline_bytes(url: str, params: dict | None = None, max_bytes: int | None = None):
+        raise httpx.ConnectError("offline in tests")
+
+    monkeypatch.setattr(market, "_http_get_json", _offline_http)
+    monkeypatch.setattr(market, "_http_get_bytes", _offline_bytes)
+
+
+@pytest.fixture(autouse=True)
+def _clear_fx_history_cache():
+    """The in-process cache outlives a test; keep per-date FX entries from leaking."""
+    from core.cache import InMemoryTTLCache, get_cache
+
+    def _clear() -> None:
+        cache = get_cache()
+        if isinstance(cache, InMemoryTTLCache):
+            for key in [k for k in cache._store if k.startswith("fxd:")]:
+                cache._store.pop(key, None)
+
+    _clear()
+    yield
+    _clear()
+
+
+@pytest.fixture
+def fake_fx(monkeypatch):
+    """Programmable offline FX providers (see tests/fakes_fx.py)."""
+    import services.market as market
+    from tests.fakes_fx import FakeFx
+
+    fake = FakeFx()
+    monkeypatch.setattr(market, "_http_get_json", fake)
+    monkeypatch.setattr(market, "_http_get_bytes", fake.get_bytes)
+    return fake
+
+
+@pytest.fixture(autouse=True)
+def _fresh_rate_limits():
+    """slowapi counts per client IP in-process: without a reset, the many users that
+    tests register would trip the 10/minute auth limit across test boundaries."""
+    from core.ratelimit import limiter
+
+    limiter.reset()
+    yield
+    limiter.reset()

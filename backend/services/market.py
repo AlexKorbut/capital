@@ -25,7 +25,7 @@ import httpx
 from sqlalchemy import select
 from tenacity import (
     retry,
-    retry_if_exception_type,
+    retry_if_exception,
     stop_after_attempt,
     wait_exponential,
 )
@@ -60,11 +60,19 @@ _COINGECKO_IDS = {
 # National-bank overrides for currencies frankfurter doesn't carry.
 _NATIONAL_BANK = {"BYN", "GEL"}
 
+def _is_transient(exc: BaseException) -> bool:
+    """Retry only what a retry can fix: network trouble and 5xx. A 4xx (404 "no such
+    date", 400, 429 ...) is the provider's final answer -- asking again only burns time."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code >= 500
+    return isinstance(exc, httpx.TransportError)
+
+
 _retry = retry(
     reraise=True,
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=0.5, max=4),
-    retry=retry_if_exception_type((httpx.HTTPError,)),
+    retry=retry_if_exception(_is_transient),
 )
 
 
@@ -78,12 +86,40 @@ def _to_decimal(value: Any) -> Decimal | None:
 # --- HTTP fetchers (raw) ------------------------------------------------------
 
 
+def _new_client() -> httpx.AsyncClient:
+    """One place that builds the HTTP client (redirects are never followed)."""
+    return httpx.AsyncClient(timeout=_HTTP_TIMEOUT)
+
+
 @_retry
 async def _http_get_json(url: str, params: dict | None = None) -> Any:
-    async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
+    async with _new_client() as client:
         resp = await client.get(url, params=params)
         resp.raise_for_status()
         return resp.json()
+
+
+@_retry
+async def _http_get_bytes(
+    url: str, params: dict | None = None, max_bytes: int = 1_000_000
+) -> bytes:
+    """GET a non-JSON document, refusing anything larger than ``max_bytes``.
+
+    Same retry policy as ``_http_get_json``. The size is enforced twice: against the
+    declared Content-Length and, for streams that do not declare one, while reading.
+    """
+    async with _new_client() as client:
+        async with client.stream("GET", url, params=params) as resp:
+            resp.raise_for_status()
+            declared = resp.headers.get("content-length")
+            if declared and declared.isdigit() and int(declared) > max_bytes:
+                raise ValueError("response too large")
+            body = bytearray()
+            async for chunk in resp.aiter_bytes():
+                body.extend(chunk)
+                if len(body) > max_bytes:
+                    raise ValueError("response too large")
+            return bytes(body)
 
 
 async def _fetch_fx_frankfurter(ccy: str) -> Decimal | None:

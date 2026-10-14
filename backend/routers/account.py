@@ -34,8 +34,12 @@ from models.advice import AdviceItem, AdviceSession
 from models.api_token import ApiToken
 from models.asset import Asset
 from models.billing import DebtRecord, SubscriptionEvent
+from models.finance import FinExpense, FinProject
+from models.goal import Goal
+from models.scenario import Scenario
 from models.snapshot import Snapshot
 from models.user import User
+from models.wallet import Wallet
 from schemas.account import DeleteAccountRequest
 
 router = APIRouter(prefix="/account", tags=["account"])
@@ -182,6 +186,12 @@ async def export_account(
         )
     )
 
+    goals = list(await db.scalars(select(Goal).where(Goal.user_id == uid)))
+    wallets = list(await db.scalars(select(Wallet).where(Wallet.user_id == uid)))
+    scenarios = list(await db.scalars(select(Scenario).where(Scenario.user_id == uid)))
+    fin_projects = list(await db.scalars(select(FinProject).where(FinProject.user_id == uid)))
+    fin_expenses = list(await db.scalars(select(FinExpense).where(FinExpense.user_id == uid)))
+
     user_row = _row(current)
     user_row.pop("password_hash", None)  # never export the secret
 
@@ -194,6 +204,11 @@ async def export_account(
         "advice_items": [_row(i) for i in items],
         "subscription_events": [_row(e) for e in sub_events],
         "debt_records": [_row(d) for d in debts],
+        "goals": [_row(g) for g in goals],
+        "wallets": [_row(w) for w in wallets],
+        "scenarios": [_row(x) for x in scenarios],
+        "fin_projects": [_row(p) for p in fin_projects],
+        "fin_expenses": [_row(e) for e in fin_expenses],
     }
 
 
@@ -216,6 +231,13 @@ async def delete_account(
     uid = current.id
     # Delete children first (explicit — don't rely on SQLite FK cascade being on).
     await db.execute(delete(ApiToken).where(ApiToken.user_id == uid))
+    # Finance projects: expenses first, then the projects they belong to.
+    await db.execute(delete(FinExpense).where(FinExpense.user_id == uid))
+    await db.execute(delete(FinProject).where(FinProject.user_id == uid))
+    await db.execute(delete(Goal).where(Goal.user_id == uid))
+    await db.execute(delete(Wallet).where(Wallet.user_id == uid))
+    # Scenarios point at snapshots (FK without cascade): they must go before the snapshots.
+    await db.execute(delete(Scenario).where(Scenario.user_id == uid))
     await db.execute(delete(AdviceItem).where(AdviceItem.user_id == uid))
     await db.execute(delete(AdviceSession).where(AdviceSession.user_id == uid))
     await db.execute(delete(Asset).where(Asset.user_id == uid))

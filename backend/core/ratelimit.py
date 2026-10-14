@@ -7,6 +7,7 @@ without throttling normal dashboard reads.
 from __future__ import annotations
 
 from slowapi import Limiter
+from starlette.requests import Request
 from slowapi.util import get_remote_address
 
 from core.config import settings
@@ -38,3 +39,16 @@ AUTH_LIMIT = "10/minute"
 FORGOT_LIMIT = "5/hour"
 INPUT_LIMIT = "30/minute"
 ADVICE_LIMIT = "10/minute"
+
+def user_key(request: Request) -> str:
+    """Rate-limit key for authenticated routes: the user (a JWT session and a personal
+    ``kp_`` token are the same bucket), falling back to the IP before authentication.
+    A host such as Jarvis calls from one address for all its users -- keying by IP would
+    make them share a single limit."""
+    return getattr(request.state, "rate_key", None) or get_remote_address(request)
+
+
+# Finance projects (fin-01). Writes can fan out to external FX providers; per user.
+FINANCE_WRITE_LIMIT = "60/minute"   # POST/PATCH of projects and expenses
+FINANCE_FX_LIMIT = "60/minute"      # GET /finance/fx
+FINANCE_REVALUE_LIMIT = "10/minute"  # POST /finance/projects/{id}/revalue

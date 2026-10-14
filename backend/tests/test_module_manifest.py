@@ -24,6 +24,20 @@ async def test_module_manifest_is_public_and_complete():
     assert "portfolio.read" in m["capabilities"] and "portfolio.write" in m["capabilities"]
 
 
+async def test_manifest_announces_finance_projects_next_to_the_old_capabilities():
+    from main import app
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
+        caps = (await client.get(f"{API}/module")).json()["capabilities"]
+
+    # New capabilities are added; nothing the host already relies on goes away.
+    for old in ("portfolio.read", "portfolio.write", "goals", "advice", "scenarios", "wallets"):
+        assert old in caps
+    for new in ("finance.projects", "finance.expenses", "finance.reports"):
+        assert new in caps
+    assert len(caps) == len(set(caps))
+
+
 async def test_health_and_openapi_named_by_the_manifest_exist():
     from main import app
 
@@ -35,3 +49,14 @@ async def test_health_and_openapi_named_by_the_manifest_exist():
         assert openapi.status_code == 200
         paths = openapi.json()["paths"]
         assert f"{API}/account/tokens" in paths and f"{API}/account/ai" in paths
+        for path in (
+            "/projects",
+            "/projects/{project_id}",
+            "/projects/{project_id}/expenses",
+            "/projects/{project_id}/report",
+            "/projects/{project_id}/revalue",
+            "/expenses/{expense_id}",
+            "/fx",
+            "/categories",
+        ):
+            assert f"{API}/finance{path}" in paths, path

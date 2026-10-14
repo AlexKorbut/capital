@@ -24,6 +24,8 @@ engine = create_async_engine(
     echo=settings.debug and not settings.is_prod,
     future=True,
     connect_args=_connect_args,
+    # Amounts, notes and project names must not leak into logs or StatementError text.
+    hide_parameters=True,
     pool_pre_ping=not settings.is_sqlite,
 )
 
