@@ -7,9 +7,14 @@ read from environment / .env so that dev (Windows, no Docker) and prod
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# backend/uploads, wherever the process was started from (Docker: /app/uploads).
+DEFAULT_UPLOADS_DIR = str(Path(__file__).resolve().parent.parent / "uploads")
 
 
 class Settings(BaseSettings):
@@ -46,6 +51,10 @@ class Settings(BaseSettings):
 
     # --- Field encryption (Fernet) ---
     fernet_key: str = ""
+
+    # --- Uploads (receipt photos on finance expenses) ---
+    # Root folder of the local-disk storage. In Docker it is the ``uploads`` volume.
+    uploads_dir: str = DEFAULT_UPLOADS_DIR
 
     # --- LLM role registry (provider-agnostic) ---
     llm_parser: str = "anthropic:claude-sonnet-4-6"
@@ -106,6 +115,14 @@ class Settings(BaseSettings):
 
     # --- CORS ---
     cors_origins: str = "http://localhost:5173"
+
+    @field_validator("uploads_dir", mode="before")
+    @classmethod
+    def _blank_uploads_dir_means_default(cls, value: object) -> object:
+        # ``UPLOADS_DIR=`` (empty) in an .env file must not turn the root into "".
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return DEFAULT_UPLOADS_DIR
+        return value
 
     @property
     def is_sqlite(self) -> bool:

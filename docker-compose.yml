@@ -45,6 +45,11 @@ services:
     environment:
       ENVIRONMENT: production
       GIT_SHA: ${GIT_SHA:-}
+      # Receipt photos live on the `uploads` volume; a stray UPLOADS_DIR in .env must not
+      # point the app off it.
+      UPLOADS_DIR: /app/uploads
+    volumes:
+      - uploads:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -114,13 +119,15 @@ services:
       - certbot-certs:/etc/letsencrypt
     entrypoint: ["sh", "-c", "trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done"]
 
-  # Nightly Postgres dump to ./backups (mounted host dir).
+  # Nightly Postgres dump to ./backups (mounted host dir), with an archive of the `uploads`
+  # volume (receipt photos) next to it.
   backup:
     image: postgres:16-alpine
     restart: unless-stopped
     env_file: .env
     volumes:
       - ./backups:/backups
+      - uploads:/uploads:ro
       - ./scripts/backup.sh:/usr/local/bin/backup.sh:ro
     entrypoint: ["sh", "/usr/local/bin/backup.sh"]
     depends_on:
@@ -130,5 +137,6 @@ services:
 volumes:
   pgdata:
   redisdata:
+  uploads:
   certbot-www:
   certbot-certs:

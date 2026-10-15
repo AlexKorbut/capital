@@ -60,3 +60,30 @@ async def test_health_and_openapi_named_by_the_manifest_exist():
             "/categories",
         ):
             assert f"{API}/finance{path}" in paths, path
+
+
+async def test_manifest_announces_finance_attachments_and_their_limits():
+    from main import app
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
+        m = (await client.get(f"{API}/module")).json()
+
+    assert "finance.attachments" in m["capabilities"]
+    for old in ("portfolio.read", "goals", "finance.projects", "finance.expenses", "finance.reports"):
+        assert old in m["capabilities"]  # capabilities only grow
+    assert len(m["capabilities"]) == len(set(m["capabilities"]))
+    assert m["limits"] == {
+        "attachment_max_bytes": 10 * 1024 * 1024,
+        "attachment_mime": ["image/jpeg", "image/png", "image/webp"],
+    }
+
+
+async def test_openapi_lists_the_attachment_routes_and_the_multipart_upload():
+    from main import app
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
+        paths = (await client.get("/openapi.json")).json()["paths"]
+
+    upload = paths[f"{API}/finance/expenses/{{expense_id}}/attachments"]["post"]
+    assert "multipart/form-data" in upload["requestBody"]["content"]
+    assert set(paths[f"{API}/finance/attachments/{{attachment_id}}"]) == {"get", "delete"}

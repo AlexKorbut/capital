@@ -94,6 +94,59 @@ def fake_fx(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def uploads_dir(tmp_path, monkeypatch):
+    """Every test gets its own empty UPLOADS_DIR: no test ever writes into backend/uploads
+    and receipt files never leak from one test into another."""
+    from core.config import settings
+
+    target = tmp_path / "uploads"
+    monkeypatch.setattr(settings, "uploads_dir", str(target))
+    return target
+
+
+@pytest.fixture
+def fernet_on():
+    """Turn field encryption on for one test (the suite runs with FERNET_KEY empty).
+
+    Restored by hand, in this order: the Fernet object is cached by ``core.crypto``, so the
+    cache has to be cleared AFTER the setting is back to empty, not before."""
+    from cryptography.fernet import Fernet
+
+    from core import crypto
+    from core.config import settings
+
+    key = Fernet.generate_key().decode()
+    previous = settings.fernet_key
+    settings.fernet_key = key
+    crypto._fernet.cache_clear()
+    try:
+        yield key
+    finally:
+        settings.fernet_key = previous
+        crypto._fernet.cache_clear()
+
+
+@pytest.fixture
+def fernet_switch():
+    """``use(key)`` sets FERNET_KEY in the middle of a test ('' turns encryption off): a file
+    written under one key can then be read under another, or under none."""
+    from core import crypto
+    from core.config import settings
+
+    previous = settings.fernet_key
+
+    def use(key: str) -> None:
+        settings.fernet_key = key
+        crypto._fernet.cache_clear()
+
+    try:
+        yield use
+    finally:
+        settings.fernet_key = previous
+        crypto._fernet.cache_clear()
+
+
+@pytest.fixture(autouse=True)
 def _fresh_rate_limits():
     """slowapi counts per client IP in-process: without a reset, the many users that
     tests register would trip the 10/minute auth limit across test boundaries."""

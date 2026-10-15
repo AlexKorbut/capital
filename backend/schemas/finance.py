@@ -220,6 +220,21 @@ class ExpenseUpdate(_Strict):
         return self
 
 
+class AttachmentBrief(BaseModel):
+    """A receipt photo as listed inside an expense. No name, no hash, no storage key."""
+
+    id: str
+    mime: str
+    size_bytes: int
+    created_at: Optional[str] = None
+
+
+class AttachmentOut(AttachmentBrief):
+    """The answer to an upload: the brief plus the name the client gave the file (display only)."""
+
+    original_name: Optional[str] = None
+
+
 class ExpenseOut(BaseModel):
     id: str
     project_id: str
@@ -236,6 +251,7 @@ class ExpenseOut(BaseModel):
     client_id: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
+    attachments: list[AttachmentBrief] = []
 
 
 class ExpenseList(BaseModel):

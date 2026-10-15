@@ -12,6 +12,9 @@ Privacy is at the core of KAPITAL. We collect the minimum and protect it.
 - **Financial data:** the assets you enter, portfolio snapshots, notes, wallet
   addresses, raw input text. Sensitive fields (wallet addresses, notes, raw input)
   are **encrypted at the application level** (AES/Fernet).
+- **Receipt photos:** if you attach a photo of a receipt to an expense, we store the
+  file itself (encrypted when encryption is enabled) and the name you gave it; the
+  file is deleted together with the expense, the project or the account.
 - **Payments:** customer and event identifiers from payment providers (Stripe,
   CoinGate). **We never receive or store bank-card data** — it is handled by Stripe
   (PCI DSS).

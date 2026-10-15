@@ -41,3 +41,22 @@ def decrypt(ciphertext: str | None) -> str | None:
     except InvalidToken:
         # Value was stored before encryption was enabled — return as-is.
         return ciphertext
+
+
+def encrypt_bytes(data: bytes | bytearray) -> bytes | bytearray:
+    """Encrypt a blob (a receipt photo). No-op if FERNET_KEY is unset (dev): the very buffer
+    comes back, so the plain-storage path makes no extra copy of a 10 MB upload."""
+    f = _fernet()
+    return data if f is None else f.encrypt(bytes(data))  # Fernet takes ``bytes`` only
+
+
+def decrypt_bytes(data: bytes) -> bytes:
+    """Decrypt a blob. Tolerates plaintext (stored before encryption was enabled)."""
+    f = _fernet()
+    if f is None:
+        return data
+    try:
+        return f.decrypt(data)
+    except InvalidToken:
+        # Same rule as ``decrypt``: a file written before the key was set reads back as-is.
+        return data

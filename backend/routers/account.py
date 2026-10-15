@@ -29,18 +29,20 @@ from core.llm import (
     set_user_ai,
     user_ai_from_settings,
 )
+from core.storage import StorageBackend, get_storage
 from core.tokens import generate_token, hash_token, visible_prefix
 from models.advice import AdviceItem, AdviceSession
 from models.api_token import ApiToken
 from models.asset import Asset
 from models.billing import DebtRecord, SubscriptionEvent
-from models.finance import FinExpense, FinProject
+from models.finance import FinAttachment, FinExpense, FinProject
 from models.goal import Goal
 from models.scenario import Scenario
 from models.snapshot import Snapshot
 from models.user import User
 from models.wallet import Wallet
 from schemas.account import DeleteAccountRequest
+from services.finance import delete_attachment_rows, discard_tree
 
 router = APIRouter(prefix="/account", tags=["account"])
 
@@ -150,10 +152,11 @@ def _jsonable(value: Any) -> Any:
     return value
 
 
-def _row(obj: Any) -> dict[str, Any]:
+def _row(obj: Any, skip: tuple[str, ...] = ()) -> dict[str, Any]:
     return {
         c.name: _jsonable(getattr(obj, c.name))
         for c in obj.__table__.columns
+        if c.name not in skip
     }
 
 
@@ -191,6 +194,13 @@ async def export_account(
     scenarios = list(await db.scalars(select(Scenario).where(Scenario.user_id == uid)))
     fin_projects = list(await db.scalars(select(FinProject).where(FinProject.user_id == uid)))
     fin_expenses = list(await db.scalars(select(FinExpense).where(FinExpense.user_id == uid)))
+    fin_attachments = list(
+        await db.scalars(
+            select(FinAttachment)
+            .where(FinAttachment.user_id == uid)
+            .order_by(FinAttachment.created_at, FinAttachment.id)
+        )
+    )
 
     user_row = _row(current)
     user_row.pop("password_hash", None)  # never export the secret
@@ -209,6 +219,9 @@ async def export_account(
         "scenarios": [_row(x) for x in scenarios],
         "fin_projects": [_row(p) for p in fin_projects],
         "fin_expenses": [_row(e) for e in fin_expenses],
+        # Receipt photos: metadata only. The bytes are not exported and neither is the
+        # server's internal storage key.
+        "fin_attachments": [_row(a, skip=("storage_key",)) for a in fin_attachments],
     }
 
 
@@ -217,6 +230,7 @@ async def delete_account(
     body: DeleteAccountRequest,
     current: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    storage: StorageBackend = Depends(get_storage),
 ) -> Response:
     """Irreversibly delete the account and all related data.
 
@@ -231,7 +245,9 @@ async def delete_account(
     uid = current.id
     # Delete children first (explicit — don't rely on SQLite FK cascade being on).
     await db.execute(delete(ApiToken).where(ApiToken.user_id == uid))
-    # Finance projects: expenses first, then the projects they belong to.
+    # Finance projects: receipt rows first, then expenses, then the projects they belong to.
+    # The files go after the commit, as one folder (u/{user_id}): stray and half-written files too.
+    await delete_attachment_rows(db, FinAttachment.user_id == uid)
     await db.execute(delete(FinExpense).where(FinExpense.user_id == uid))
     await db.execute(delete(FinProject).where(FinProject.user_id == uid))
     await db.execute(delete(Goal).where(Goal.user_id == uid))
@@ -250,6 +266,7 @@ async def delete_account(
     )
     await db.execute(delete(User).where(User.id == uid))
     await db.commit()
+    await discard_tree(storage, f"u/{uid}")
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

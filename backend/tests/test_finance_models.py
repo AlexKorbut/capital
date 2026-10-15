@@ -208,8 +208,9 @@ def test_alembic_upgrade_head_creates_the_finance_tables(tmp_path):
     up = _alembic(db_file, "upgrade", "head")
     assert up.returncode == 0, up.stderr[-2000:]
 
-    heads = _alembic(db_file, "heads")
-    assert FINANCE_REVISION in heads.stdout and "(head)" in heads.stdout
+    # fin-02 put a newer revision on top: the finance one must still be part of the chain.
+    history = _alembic(db_file, "history")
+    assert FINANCE_REVISION in history.stdout and "(head)" in _alembic(db_file, "heads").stdout
 
     insp = _inspect(db_file)
     assert {"fin_projects", "fin_expenses", "fx_rates_daily"} <= set(insp.get_table_names())

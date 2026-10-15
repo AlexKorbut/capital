@@ -21,8 +21,11 @@ RUN pip install -r requirements.txt
 
 COPY . .
 
-# Non-root runtime user.
-RUN useradd --create-home --uid 1000 appuser && chown -R appuser:appuser /app
+# Non-root runtime user. /app/uploads is created BEFORE the chown so that the `uploads` volume
+# (receipt photos) is initialised with appuser as its owner.
+RUN useradd --create-home --uid 1000 appuser \
+    && mkdir -p /app/uploads \
+    && chown -R appuser:appuser /app
 USER appuser
 
 EXPOSE 8000

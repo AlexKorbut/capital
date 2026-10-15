@@ -5,6 +5,9 @@ expense also stores its value in the project's base currency, converted at the
 rate of the expense date (``base_amount`` + the rate that produced it), so a
 report never depends on today's rate. ``fx_rates_daily`` is the shared, global
 cache of those dated rates (USD pivot, no user data).
+
+An expense may carry up to a few *attachments* (fin-02): photos of the receipt. The row
+holds only metadata; the bytes live in the storage backend under ``storage_key``.
 """
 from __future__ import annotations
 
@@ -88,6 +91,35 @@ class FinExpense(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class FinAttachment(Base):
+    """Metadata of one receipt photo; the file itself is in ``core.storage``."""
+
+    __tablename__ = "fin_attachments"
+    __table_args__ = (UniqueConstraint("expense_id", "sha256", name="uq_fin_attachment_expense_sha"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    expense_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("fin_expenses.id", ondelete="CASCADE")
+    )
+    # Built by the server only: u/{user_id}/{expense_id}/{id}.{ext}. Never shown to clients.
+    storage_key: Mapped[str] = mapped_column(String(255))
+    # Decided from the file's own bytes (image/jpeg | image/png | image/webp), not from the client.
+    mime: Mapped[str] = mapped_column(String(40))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    # Of the plain bytes: the same picture twice on one expense is one attachment.
+    sha256: Mapped[str] = mapped_column(String(64))
+    # What the client called the file (cut to 200 characters before it is stored). For display
+    # only; it never reaches a path or a header. A file name can say a lot, so it is encrypted
+    # at rest like the notes are.
+    original_name: Mapped[str | None] = mapped_column(EncryptedString, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
     )
 
 

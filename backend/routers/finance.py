@@ -14,7 +14,7 @@ globals and mis-read the parameters (see routers/portfolio.py).
 """
 import uuid
 from datetime import date
-from typing import Annotated, Optional
+from typing import Annotated, Optional, Sequence
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,9 +28,11 @@ from core.ratelimit import (
     limiter,
     user_key,
 )
-from models.finance import FinExpense, FinProject
+from core.storage import StorageBackend, get_storage
+from models.finance import FinAttachment, FinExpense, FinProject
 from models.user import User
 from schemas.finance import (
+    AttachmentBrief,
     Category,
     CategoryHint,
     CurrencyCode,
@@ -49,6 +51,7 @@ from schemas.finance import (
     SpentOn,
     dec_str,
 )
+from services import attachments as attachments_service
 from services import finance as finance_service
 from services import finance_report, fx_history
 
@@ -88,7 +91,15 @@ def _project_out(project: FinProject, stats: finance_service.ProjectStats) -> Pr
     )
 
 
-def _expense_out(e: FinExpense, base_currency: str) -> ExpenseOut:
+def _attachment_brief(a: FinAttachment) -> AttachmentBrief:
+    return AttachmentBrief(
+        id=str(a.id), mime=a.mime, size_bytes=a.size_bytes, created_at=_iso(a.created_at)
+    )
+
+
+def _expense_out(
+    e: FinExpense, base_currency: str, attachments: Sequence[FinAttachment] = ()
+) -> ExpenseOut:
     return ExpenseOut(
         id=str(e.id),
         project_id=str(e.project_id),
@@ -105,7 +116,18 @@ def _expense_out(e: FinExpense, base_currency: str) -> ExpenseOut:
         client_id=str(e.client_id) if e.client_id else None,
         created_at=_iso(e.created_at),
         updated_at=_iso(e.updated_at),
+        attachments=[_attachment_brief(a) for a in attachments],
     )
+
+
+async def _expenses_out(
+    db: AsyncSession, user_id: uuid.UUID, expenses: Sequence[FinExpense], base_currency: str
+) -> list[ExpenseOut]:
+    """Expenses with their receipt lists, fetched in one query for the whole page."""
+    by_expense = await attachments_service.attachments_by_expense(
+        db, user_id, [e.id for e in expenses]
+    )
+    return [_expense_out(e, base_currency, by_expense.get(e.id, ())) for e in expenses]
 
 
 def _check_period(date_from: Optional[date], date_to: Optional[date]) -> None:
@@ -178,9 +200,10 @@ async def delete_project(
     project_id: uuid.UUID,
     current: User = Depends(finance_user),
     db: AsyncSession = Depends(get_db),
+    storage: StorageBackend = Depends(get_storage),
 ) -> Response:
     project = await finance_service.get_project(db, current.id, project_id)
-    await finance_service.delete_project(db, project)
+    await finance_service.delete_project(db, project, storage)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -213,7 +236,7 @@ async def list_expenses(
         offset=offset,
     )
     return ExpenseList(
-        items=[_expense_out(e, project.base_currency) for e in rows],
+        items=await _expenses_out(db, current.id, rows, project.base_currency),
         total=total,
         limit=limit,
         offset=offset,
@@ -234,7 +257,8 @@ async def create_expense(
     current: User = Depends(finance_user),
     db: AsyncSession = Depends(get_db),
 ) -> ExpenseOut:
-    project = await finance_service.get_project(db, current.id, project_id)
+    user_id = current.id  # read now: a lost client_id race rolls back and expires ``current``
+    project = await finance_service.get_project(db, user_id, project_id)
     base_currency = project.base_currency
     expense, created = await finance_service.create_expense(
         db,
@@ -249,7 +273,8 @@ async def create_expense(
     )
     if not created:  # the same client_id came again: hand back the original, no duplicate
         response.status_code = status.HTTP_200_OK
-    return _expense_out(expense, base_currency)
+    [out] = await _expenses_out(db, user_id, [expense], base_currency)
+    return out
 
 
 @router.patch("/expenses/{expense_id}", response_model=ExpenseOut)
@@ -261,12 +286,14 @@ async def update_expense(
     current: User = Depends(finance_user),
     db: AsyncSession = Depends(get_db),
 ) -> ExpenseOut:
-    expense = await finance_service.get_expense(db, current.id, expense_id)
+    user_id = current.id
+    expense = await finance_service.get_expense(db, user_id, expense_id)
     base_currency = await finance_service.base_currency_of(db, expense)
     expense = await finance_service.update_expense(
         db, expense, base_currency, body.model_dump(exclude_unset=True)
     )
-    return _expense_out(expense, base_currency)
+    [out] = await _expenses_out(db, user_id, [expense], base_currency)
+    return out
 
 
 @router.delete(
@@ -276,9 +303,10 @@ async def delete_expense(
     expense_id: uuid.UUID,
     current: User = Depends(finance_user),
     db: AsyncSession = Depends(get_db),
+    storage: StorageBackend = Depends(get_storage),
 ) -> Response:
     expense = await finance_service.get_expense(db, current.id, expense_id)
-    await finance_service.delete_expense(db, expense)
+    await finance_service.delete_expense(db, expense, storage)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

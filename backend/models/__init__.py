@@ -11,7 +11,7 @@ from .advice import AdviceItem, AdviceSession
 from .api_token import ApiToken
 from .asset import Asset
 from .billing import DebtRecord, SubscriptionEvent
-from .finance import FinExpense, FinProject, FxRateDaily
+from .finance import FinAttachment, FinExpense, FinProject, FxRateDaily
 from .goal import Goal
 from .market import AssetPrice, ExchangeRate
 from .news import NewsItem
@@ -38,5 +38,6 @@ __all__ = [
     "ApiToken",
     "FinProject",
     "FinExpense",
+    "FinAttachment",
     "FxRateDaily",
 ]

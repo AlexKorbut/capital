@@ -5,6 +5,7 @@ is DATABASE_URL. Models use portable column types (see models/types.py).
 """
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import (
@@ -28,6 +29,10 @@ engine = create_async_engine(
     hide_parameters=True,
     pool_pre_ping=not settings.is_sqlite,
 )
+
+# The SQLite driver logs every statement WITH its parameters at DEBUG, which is exactly what
+# ``hide_parameters`` keeps out of SQLAlchemy's own logs (file names, amounts, notes).
+logging.getLogger("aiosqlite").setLevel(logging.WARNING)
 
 SessionLocal = async_sessionmaker(
     bind=engine,

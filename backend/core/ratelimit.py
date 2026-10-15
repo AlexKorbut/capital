@@ -52,3 +52,7 @@ def user_key(request: Request) -> str:
 FINANCE_WRITE_LIMIT = "60/minute"   # POST/PATCH of projects and expenses
 FINANCE_FX_LIMIT = "60/minute"      # GET /finance/fx
 FINANCE_REVALUE_LIMIT = "10/minute"  # POST /finance/projects/{id}/revalue
+
+# Receipt photos (fin-02). Each upload can carry up to 10 MB: keep it tighter than plain writes.
+ATTACHMENT_UPLOAD_LIMIT = "20/minute"  # POST /finance/expenses/{id}/attachments, per user
+ATTACHMENT_READ_LIMIT = "120/minute"  # GET /finance/attachments/{id}, per user (a gallery of pictures)

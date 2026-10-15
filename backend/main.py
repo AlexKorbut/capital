@@ -29,6 +29,7 @@ from routers import (
     auth,
     billing,
     finance,
+    finance_attachments,
     goals,
     legal,
     portfolio,
@@ -37,6 +38,7 @@ from routers import (
     webhooks,
 )
 from services import digest, inheritance, market
+from services.attachments import ATTACHMENT_MIME, MAX_ATTACHMENT_BYTES, log_encryption_state
 from services.finance import FinanceError
 
 logging.basicConfig(level=logging.INFO if not settings.debug else logging.DEBUG)
@@ -66,6 +68,7 @@ async def lifespan(app: FastAPI):
                 "DEMO MODE active — LLM services return canned/computed results "
                 "(no provider key set). Set ANTHROPIC_API_KEY etc. for real models."
             )
+        log_encryption_state()  # receipt files: unencrypted in dev (a warning), refused in production
         # FX / crypto refresh. Dev runs in-process via APScheduler; prod (Docker)
         # runs the same jobs under Celery beat (tasks/), so skip the in-process
         # scheduler there to avoid double-scheduling.
@@ -177,6 +180,7 @@ app.include_router(legal.router, prefix=API_PREFIX)
 app.include_router(goals.router, prefix=API_PREFIX)
 app.include_router(wallets.router, prefix=API_PREFIX)
 app.include_router(finance.router, prefix=API_PREFIX)
+app.include_router(finance_attachments.router, prefix=API_PREFIX)
 
 
 @app.get("/health", tags=["meta"])
@@ -218,5 +222,11 @@ async def module_manifest() -> dict[str, object]:
             "finance.projects",
             "finance.expenses",
             "finance.reports",
+            "finance.attachments",
         ],
+        # Hard limits a host can show before it uploads (receipt photos, fin-02).
+        "limits": {
+            "attachment_max_bytes": MAX_ATTACHMENT_BYTES,
+            "attachment_mime": list(ATTACHMENT_MIME),
+        },
     }

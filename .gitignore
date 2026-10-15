@@ -15,8 +15,13 @@ venv/
 
 # Databases
 *.db
+*.db-wal
+*.db-shm
 *.sqlite
 *.sqlite3
+
+# Uploaded user files (receipt photos on finance expenses) - never in git
+/backend/uploads/
 
 # Node / frontend
 node_modules/

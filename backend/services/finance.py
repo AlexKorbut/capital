@@ -9,10 +9,15 @@ fetched along the way in THIS session), and only then change expenses and commit
 rates and expenses land in one transaction; on SQLite no write lock is held while a
 lookup is still running.
 
+Receipt photos (fin-02) hang off expenses: deleting an expense or a project drops the
+attachment rows in the same transaction and removes the files only AFTER the commit
+(``core.storage.remove_files``: a file that will not go is a log line, never a 500).
+
 Nothing here logs amounts, notes or project names.
 """
 from __future__ import annotations
 
+import asyncio
 import uuid
 from dataclasses import dataclass
 from datetime import date
@@ -23,7 +28,9 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models.finance import FinExpense, FinProject
+from core import quotas
+from core.storage import StorageBackend, remove_files, remove_tree
+from models.finance import FinAttachment, FinExpense, FinProject
 from models.user import User
 from schemas.finance import ISO_4217
 from services import fx_history
@@ -53,6 +60,32 @@ class Conflict(FinanceError):
 
 class Unprocessable(FinanceError):
     status_code = 422
+
+
+class PayloadTooLarge(FinanceError):
+    status_code = 413
+
+
+class UnsupportedMedia(FinanceError):
+    status_code = 415
+
+
+class StorageUnavailable(FinanceError):
+    status_code = 503
+
+
+class AttachmentCorrupted(FinanceError):
+    status_code = 500
+
+
+class RequestTimeout(FinanceError):
+    status_code = 408
+
+
+class ClientGone(FinanceError):
+    """The client hung up mid-request: nobody reads the answer, and it is not a server fault."""
+
+    status_code = 499
 
 
 def as_uuid(value: Any) -> uuid.UUID:
@@ -289,8 +322,39 @@ async def update_project(
     return project
 
 
-async def delete_project(db: AsyncSession, project: FinProject) -> None:
+async def discard_files(storage: StorageBackend, keys: list[str]) -> None:
+    """Remove files off the event loop (a user can have hundreds); never raises."""
+    if keys:
+        await asyncio.to_thread(remove_files, storage, keys)
+
+
+async def discard_tree(storage: StorageBackend, prefix: str) -> None:
+    """Remove a whole folder (a user's) off the event loop; never raises."""
+    await asyncio.to_thread(remove_tree, storage, prefix)
+
+
+async def delete_attachment_rows(db: AsyncSession, *conditions: Any) -> list[str]:
+    """Delete the attachment rows matching ``conditions`` (same transaction, no commit) and
+    return their storage keys: the caller removes the files once its commit has succeeded.
+
+    Explicit, because SQLite does not enforce the FK cascade here and Postgres refuses to drop
+    an expense that still has attachments.
+    """
+    keys = list(await db.scalars(select(FinAttachment.storage_key).where(*conditions)))
+    await db.execute(delete(FinAttachment).where(*conditions))
+    return keys
+
+
+async def delete_project(db: AsyncSession, project: FinProject, storage: StorageBackend) -> None:
     """Cascade by hand: SQLite does not enforce the FK here."""
+    owned_expenses = select(FinExpense.id).where(
+        FinExpense.project_id == project.id, FinExpense.user_id == project.user_id
+    )
+    keys = await delete_attachment_rows(
+        db,
+        FinAttachment.user_id == project.user_id,
+        FinAttachment.expense_id.in_(owned_expenses),
+    )
     await db.execute(
         delete(FinExpense).where(
             FinExpense.project_id == project.id, FinExpense.user_id == project.user_id
@@ -300,6 +364,7 @@ async def delete_project(db: AsyncSession, project: FinProject) -> None:
         delete(FinProject).where(FinProject.id == project.id, FinProject.user_id == project.user_id)
     )
     await db.commit()
+    await discard_files(storage, keys)
 
 
 # --- expenses --------------------------------------------------------------------------
@@ -365,6 +430,16 @@ def _same_project_or_conflict(existing: FinExpense, project_id: uuid.UUID) -> Fi
     return existing
 
 
+async def _check_expense_ceiling(db: AsyncSession, user_id: uuid.UUID) -> None:
+    """A retry of an existing ``client_id`` never gets here; only a genuinely new expense does."""
+    held = await db.scalar(
+        select(func.count()).select_from(FinExpense).where(FinExpense.user_id == user_id)
+    )
+    if (held or 0) >= quotas.MAX_USER_EXPENSES:
+        limit = f"{quotas.MAX_USER_EXPENSES:,}".replace(",", " ")
+        raise Conflict(f"Достигнут предел: не больше {limit} трат на пользователя")
+
+
 async def create_expense(
     db: AsyncSession,
     project: FinProject,
@@ -384,6 +459,7 @@ async def create_expense(
         if existing is not None:
             return _same_project_or_conflict(existing, project_id), False
 
+    await _check_expense_ceiling(db, user_id)
     pricer = Pricer(db)
     pricing = await pricer.price(
         amount=amount, currency=currency, spent_on=spent_on, base=base, manual_rate=fx_rate
@@ -453,11 +529,15 @@ async def update_expense(
     return expense
 
 
-async def delete_expense(db: AsyncSession, expense: FinExpense) -> None:
+async def delete_expense(db: AsyncSession, expense: FinExpense, storage: StorageBackend) -> None:
+    keys = await delete_attachment_rows(
+        db, FinAttachment.expense_id == expense.id, FinAttachment.user_id == expense.user_id
+    )
     await db.execute(
         delete(FinExpense).where(FinExpense.id == expense.id, FinExpense.user_id == expense.user_id)
     )
     await db.commit()
+    await discard_files(storage, keys)
 
 
 async def revalue_project(db: AsyncSession, project: FinProject) -> tuple[int, int]:
