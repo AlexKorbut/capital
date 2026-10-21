@@ -8,6 +8,7 @@ import {
   syncWallets,
   type Chain,
 } from "@/services/wallets";
+import { errMessage } from "@/components/states";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -65,6 +66,10 @@ export function WalletsSection() {
       if (found) setConflict(found);
     },
   });
+  const overwriteError =
+    conflict && sync.isError && !readSnapshotConflict(sync.error)
+      ? errMessage(sync.error)
+      : null;
 
   const list = wallets.data ?? [];
 
@@ -181,6 +186,8 @@ export function WalletsSection() {
         <SnapshotOverwriteDialog
           snapshotDate={conflict.snapshot_date}
           pending={sync.isPending}
+          error={overwriteError}
+          variant="wallets"
           onCancel={() => {
             setConflict(null);
             sync.reset();

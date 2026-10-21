@@ -158,6 +158,7 @@ export interface AssetRow {
 export interface CurrentPortfolio {
   snapshot_id: string;
   created_at: string | null;
+  updated_at: string | null;
   total_usd: string | null;
   estimated_total_usd: string | null;
   base_currency: string | null;

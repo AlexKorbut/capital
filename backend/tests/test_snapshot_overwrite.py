@@ -1,4 +1,4 @@
-"""One snapshot per UTC day, and an explicit overwrite of that day.
+"""One snapshot per local day (default Europe/Minsk), and an explicit overwrite.
 
 Creating a second snapshot for the same date without ``overwrite`` is a 409 and
 writes nothing. ``overwrite=true`` replaces the row in one transaction: same id
@@ -24,18 +24,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from agents.graph import compile_all
 from agents.state import AssetItem
+from core.calendar import local_today
 from core.db import SessionLocal, engine
 from models.advice import AdviceItem, AdviceSession
 from models.asset import Asset
 from models.scenario import Scenario
 from models.snapshot import Snapshot
 from models.user import User
+from models.wallet import Wallet
 from services import portfolio_read, returns as returns_service
 from services.persistence import (
     SnapshotDateConflict,
     find_snapshot,
     save_portfolio,
-    utc_today,
 )
 
 API = "/api/v1"
@@ -80,7 +81,7 @@ async def test_create_snapshot_for_a_day(db_ready):
     async with SessionLocal() as session:
         snap = await session.get(Snapshot, uuid.UUID(snapshot_id))
         assert snap is not None
-        assert snap.snapshot_date == utc_today()
+        assert snap.snapshot_date == local_today()
         assert snap.total_usd == Decimal("1000.00")
         assert snap.is_confirmed is True
         notes = list(await session.scalars(select(Asset.note).where(Asset.snapshot_id == snap.id)))
@@ -108,7 +109,7 @@ async def test_same_day_without_overwrite_is_a_conflict_and_keeps_the_original(d
         )
 
     assert caught.value.snapshot_id == uuid.UUID(original)
-    assert caught.value.snapshot_date == utc_today()
+    assert caught.value.snapshot_date == local_today()
     assert "уже есть" in caught.value.message
 
     async with SessionLocal() as session:
@@ -123,7 +124,7 @@ async def test_same_day_without_overwrite_is_a_conflict_and_keeps_the_original(d
 async def test_other_day_and_other_user_do_not_conflict(db_ready):
     uid = await _user()
     other = await _user()
-    yesterday = utc_today() - timedelta(days=1)
+    yesterday = local_today() - timedelta(days=1)
 
     await save_portfolio(
         user_id=uid,
@@ -144,13 +145,13 @@ async def test_other_day_and_other_user_do_not_conflict(db_ready):
         assert len(rows) == 3
         assert await find_snapshot(session, uid) is not None
         mine = await session.get(Snapshot, uuid.UUID(today_id))
-        assert mine.snapshot_date == utc_today()
+        assert mine.snapshot_date == local_today()
         assert mine.total_usd == Decimal("200")
 
 
 async def test_overwrite_replaces_assets_recalculates_and_keeps_links(db_ready):
     uid = await _user()
-    yesterday = utc_today() - timedelta(days=1)
+    yesterday = local_today() - timedelta(days=1)
     await save_portfolio(
         user_id=uid,
         assets=[_cash("100", "yesterday")],
@@ -211,7 +212,8 @@ async def test_overwrite_replaces_assets_recalculates_and_keeps_links(db_ready):
         assert snap.raw_input == "new text"
         assert snap.input_type == "import"
         assert snap.created_at == created_at
-        assert snap.snapshot_date == utc_today()
+        assert snap.updated_at is not None and snap.updated_at >= created_at
+        assert snap.snapshot_date == local_today()
 
         notes = list(
             await session.scalars(select(Asset.note).where(Asset.snapshot_id == original_id))
@@ -261,6 +263,155 @@ async def test_overwrite_commit_failure_rolls_back_the_whole_replacement(db_read
         notes = list(await session.scalars(select(Asset.note)))
         assert notes == ["original"]
         assert await session.scalar(select(func.count()).select_from(Snapshot)) == 1
+
+
+async def test_day_is_minsk_at_00_30_and_a_timezone_setting_overrides_it(db_ready):
+    """00:30 in Minsk is still the previous UTC date. It must not overwrite yesterday."""
+    night = datetime(2026, 10, 20, 21, 30, tzinfo=timezone.utc)  # 21.10.2026 00:30 +03
+    evening = datetime(2026, 10, 20, 20, 59, tzinfo=timezone.utc)  # 20.10.2026 23:59 +03
+    assert local_today(None, night) == date(2026, 10, 21)
+    assert local_today(None, evening) == date(2026, 10, 20)
+    assert local_today({"timezone": "UTC"}, night) == date(2026, 10, 20)
+    assert local_today({"timezone": "Not/AZone"}, night) == date(2026, 10, 21)
+
+    uid = await _user()
+    await save_portfolio(
+        user_id=uid,
+        assets=[_cash("100", "evening")],
+        snapshot_date=date(2026, 10, 20),
+        created_at=evening,
+        total_usd=Decimal("100"),
+    )
+    fresh = await save_portfolio(
+        user_id=uid,
+        assets=[_cash("50", "after-midnight")],
+        total_usd=Decimal("50"),
+        now=night,
+    )
+    async with SessionLocal() as session:
+        snap = await session.get(Snapshot, uuid.UUID(fresh))
+        assert snap.snapshot_date == date(2026, 10, 21)
+        assert await session.scalar(select(func.count()).select_from(Snapshot)) == 2
+        kept = await session.scalar(select(Asset.note).where(Asset.note == "evening"))
+        assert kept == "evening"
+
+    with pytest.raises(SnapshotDateConflict) as caught:
+        await save_portfolio(user_id=uid, assets=[_cash("60", "again")], now=night)
+    assert caught.value.snapshot_date == date(2026, 10, 21)
+
+    async with SessionLocal() as session:
+        user = await session.get(User, uid)
+        user.settings = {"timezone": "UTC"}
+        await session.commit()
+    with pytest.raises(SnapshotDateConflict) as utc_conflict:
+        await save_portfolio(user_id=uid, assets=[_cash("70", "utc-user")], now=night)
+    assert utc_conflict.value.snapshot_date == date(2026, 10, 20)
+
+
+async def test_wallet_replace_keeps_non_wallet_assets_and_bumps_updated_at(db_ready):
+    uid = await _user()
+    original = await save_portfolio(
+        user_id=uid,
+        assets=[
+            _cash("1000", "наличные"),
+            AssetItem(
+                asset_type="bank_deposit", amount=Decimal("500"), currency="USD",
+                note="вклад", usd_value=Decimal("500"), usd_rate=Decimal(1),
+            ),
+            AssetItem(
+                asset_type="real_estate", amount=Decimal("2000"), currency="USD",
+                note="квартира", usd_value=Decimal("2000"), usd_rate=Decimal(1),
+            ),
+            AssetItem(
+                asset_type="crypto", amount=Decimal("1"), currency="BTC", symbol="BTC",
+                note="ручной биток", usd_value=Decimal("100"),
+            ),
+            AssetItem(
+                asset_type="crypto", amount=Decimal("0.1"), currency="BTC", symbol="BTC",
+                note="старый кошелёк", wallet_address="bc1q-old", usd_value=Decimal("50"),
+            ),
+        ],
+        total_usd=Decimal("3650"),
+        raw_input="текст снимка",
+        input_type="text",
+    )
+    async with SessionLocal() as session:
+        before = await session.get(Snapshot, uuid.UUID(original))
+        created_at = before.created_at
+        before.updated_at = created_at - timedelta(days=3)
+        before.note = "keep-note"
+        await session.commit()
+
+    replaced = await save_portfolio(
+        user_id=uid,
+        assets=[
+            AssetItem(
+                asset_type="crypto", amount=Decimal("2"), currency="BTC", symbol="BTC",
+                quantity=Decimal("2"), wallet_address="bc1q-new",
+                note="новый кошелёк", usd_value=Decimal("20"),
+            )
+        ],
+        total_usd=Decimal("20"),
+        raw_input="",
+        input_type="import",
+        overwrite=True,
+        asset_replace="wallets",
+    )
+    assert replaced == original
+    async with SessionLocal() as session:
+        snap = await session.get(Snapshot, uuid.UUID(original))
+        assert snap.note == "keep-note"
+        assert snap.raw_input == "текст снимка"
+        assert snap.input_type == "text"
+        assert snap.created_at == created_at
+        assert snap.updated_at > created_at - timedelta(days=3)
+        assert snap.total_usd == Decimal("3620")
+        notes = set(await session.scalars(select(Asset.note).where(Asset.snapshot_id == snap.id)))
+        assert notes == {"наличные", "вклад", "квартира", "ручной биток", "новый кошелёк"}
+        addresses = set(
+            await session.scalars(select(Asset.wallet_address).where(Asset.snapshot_id == snap.id))
+        )
+        assert "bc1q-new" in addresses
+        assert "bc1q-old" not in addresses
+
+
+async def test_reminder_follows_updated_at(db_ready, monkeypatch):
+    from services import digest
+
+    sent: list[str] = []
+
+    async def _fake_send(*, to: str, **_kwargs):
+        sent.append(to)
+
+    monkeypatch.setattr(digest.email_service, "send_reminder_email", _fake_send)
+    fresh_id = uuid.uuid4()
+    stale_id = uuid.uuid4()
+    now = datetime.now(timezone.utc)
+    async with SessionLocal() as session:
+        fresh = User(
+            id=fresh_id, email="fresh@t.test", password_hash="x",
+            email_verified=True, base_currency="USD",
+        )
+        stale = User(
+            id=stale_id, email="stale@t.test", password_hash="x",
+            email_verified=True, base_currency="USD",
+        )
+        session.add_all([fresh, stale])
+        session.add(Snapshot(
+            id=uuid.uuid4(), user_id=fresh_id, is_confirmed=True,
+            snapshot_date=date(2024, 1, 1), total_usd=Decimal("1"),
+            created_at=now - timedelta(days=40), updated_at=now,
+        ))
+        session.add(Snapshot(
+            id=uuid.uuid4(), user_id=stale_id, is_confirmed=True,
+            snapshot_date=date(2024, 1, 2), total_usd=Decimal("1"),
+            created_at=now, updated_at=now - timedelta(days=40),
+        ))
+        await session.commit()
+
+    count = await digest.run_update_reminders()
+    assert sent == ["stale@t.test"]
+    assert count == 1
 
 
 # --- HTTP: the flag is explicit, and a 409 leaves the thread resumable -------
@@ -334,9 +485,9 @@ async def test_confirm_conflicts_without_flag_and_overwrites_with_it(db_ready, g
         assert conflict.status_code == 409, conflict.text
         detail = conflict.json()["detail"]
         assert detail["code"] == "snapshot_exists"
-        assert detail["snapshot_date"] == utc_today().isoformat()
+        assert detail["snapshot_date"] == local_today().isoformat()
         assert detail["snapshot_id"] == snapshot_id
-        assert detail["message"].startswith(f"Снимок за {utc_today().strftime('%d.%m.%Y')}")
+        assert detail["message"].startswith(f"Снимок за {local_today().strftime('%d.%m.%Y')}")
         # The flag was absent: the body must not have been overwritten.
         assert "overwrite" not in conflict.request.content.decode()
 
@@ -384,7 +535,7 @@ async def test_overwrite_does_not_spend_a_snapshot_quota_slot(db_ready, graphs_o
         uid = uuid.UUID(user_id)
         async with SessionLocal() as session:
             # Free plan: 3 confirmed snapshots this month. Two older days + today.
-            for offset, day in enumerate((date(2020, 3, 1), date(2020, 3, 2), utc_today())):
+            for offset, day in enumerate((date(2020, 3, 1), date(2020, 3, 2), local_today())):
                 session.add(
                     Snapshot(
                         id=uuid.uuid4(),
@@ -470,9 +621,9 @@ async def test_superseded_same_day_row_is_kept_but_absent_from_the_series(db_rea
             Snapshot(
                 id=older_id,
                 user_id=uid,
-                snapshot_date=utc_today(),
-                superseded_at=_at(utc_today(), 9),
-                created_at=_at(utc_today(), 9),
+                snapshot_date=local_today(),
+                superseded_at=_at(local_today(), 9),
+                created_at=_at(local_today(), 9),
                 total_usd=Decimal("100"),
                 base_currency="USD",
                 is_confirmed=True,
@@ -507,6 +658,86 @@ async def test_superseded_same_day_row_is_kept_but_absent_from_the_series(db_rea
         assert growth["current_usd"] == "200.00"
 
 
+async def test_wallet_sync_conflicts_then_overwrites_only_wallet_assets(
+    db_ready, graphs_on_app, monkeypatch
+):
+    from decimal import Decimal as D
+    from httpx import ASGITransport, AsyncClient
+
+    import services.market as market
+    import services.wallets as wallets_service
+
+    async def _balance(_chain: str, _address: str):
+        return D("2")
+
+    async def _price(_symbol: str):
+        return D("10")
+
+    monkeypatch.setattr(wallets_service, "fetch_balance", _balance)
+    monkeypatch.setattr(market, "usd_price_for_crypto", _price)
+
+    async with AsyncClient(transport=ASGITransport(app=graphs_on_app), base_url="http://t") as client:
+        headers, user_id = await _register(client)
+        uid = uuid.UUID(user_id)
+        snap_id = uuid.uuid4()
+        async with SessionLocal() as session:
+            session.add(Snapshot(
+                id=snap_id, user_id=uid, snapshot_date=local_today(),
+                total_usd=D("3650"), base_currency="USD", is_confirmed=True,
+                input_type="text", raw_input="текст снимка", note="keep-note",
+            ))
+            session.add(Asset(
+                id=uuid.uuid4(), snapshot_id=snap_id, user_id=uid, asset_type="cash",
+                amount=D("1000"), currency="USD", note="наличные", usd_value=D("1000"),
+            ))
+            session.add(Asset(
+                id=uuid.uuid4(), snapshot_id=snap_id, user_id=uid, asset_type="bank_deposit",
+                amount=D("500"), currency="USD", note="вклад", usd_value=D("500"),
+            ))
+            session.add(Asset(
+                id=uuid.uuid4(), snapshot_id=snap_id, user_id=uid, asset_type="real_estate",
+                amount=D("2000"), currency="USD", note="квартира", usd_value=D("2000"),
+            ))
+            session.add(Asset(
+                id=uuid.uuid4(), snapshot_id=snap_id, user_id=uid, asset_type="crypto",
+                amount=D("1"), currency="BTC", symbol="BTC", note="ручной биток",
+                usd_value=D("100"),
+            ))
+            session.add(Asset(
+                id=uuid.uuid4(), snapshot_id=snap_id, user_id=uid, asset_type="crypto",
+                amount=D("0.1"), currency="BTC", symbol="BTC", wallet_address="bc1q-old",
+                note="старый кошелёк", usd_value=D("50"),
+            ))
+            session.add(Wallet(id=uuid.uuid4(), user_id=uid, chain="BTC", address="bc1q-new"))
+            await session.commit()
+
+        blocked = await client.post(f"{API}/wallets/sync", headers=headers)
+        assert blocked.status_code == 409, blocked.text
+        assert blocked.json()["detail"]["code"] == "snapshot_exists"
+        async with SessionLocal() as session:
+            notes = set(await session.scalars(select(Asset.note)))
+            assert "старый кошелёк" in notes and "наличные" in notes
+
+        replaced = await client.post(f"{API}/wallets/sync", params={"overwrite": True}, headers=headers)
+        assert replaced.status_code == 200, replaced.text
+        assert replaced.json()["snapshot_id"] == str(snap_id)
+        assert D(replaced.json()["total_usd"]) == D("3620")
+
+        async with SessionLocal() as session:
+            snap = await session.get(Snapshot, snap_id)
+            assert snap.note == "keep-note"
+            assert snap.raw_input == "текст снимка"
+            assert snap.input_type == "text"
+            notes = set(await session.scalars(select(Asset.note).where(Asset.snapshot_id == snap_id)))
+            assert {"наличные", "вклад", "квартира", "ручной биток"} <= notes
+            assert "старый кошелёк" not in notes
+            addresses = set(
+                await session.scalars(select(Asset.wallet_address).where(Asset.snapshot_id == snap_id))
+            )
+            assert "bc1q-new" in addresses
+            assert "bc1q-old" not in addresses
+
+
 # --- migration: same-day duplicates are marked, not deleted ------------------
 
 
@@ -534,6 +765,10 @@ def test_migration_marks_older_same_day_snapshots_and_keeps_them(tmp_path):
     user_c = uuid.uuid4().hex
     iso_t = uuid.uuid4().hex
     space_later = uuid.uuid4().hex
+    user_d = uuid.uuid4().hex
+    minsk_early = uuid.uuid4().hex
+    minsk_later = uuid.uuid4().hex
+    minsk_previous = uuid.uuid4().hex
     advice_id = uuid.uuid4().hex
     scenario_id = uuid.uuid4().hex
     early_asset = uuid.uuid4().hex
@@ -591,6 +826,27 @@ def test_migration_marks_older_same_day_snapshots_and_keeps_them(tmp_path):
         "INSERT INTO snapshots (id, user_id, created_at, total_usd, is_confirmed, note) "
         "VALUES (?, ?, '2026-10-21 09:00:00', 2, 1, 'space-later')",
         (space_later, user_c),
+    )
+    # 00:30 Minsk on 21 Oct is 21:30 UTC on 20 Oct. UTC backfill would split the day.
+    conn.execute(
+        "INSERT INTO users (id, email, base_currency, subscription, email_verified, settings, "
+        "totp_enabled, token_version) VALUES (?, ?, 'USD', 'free', 0, '{}', 0, 0)",
+        (user_d, f"{user_d}@t.test"),
+    )
+    conn.execute(
+        "INSERT INTO snapshots (id, user_id, created_at, total_usd, is_confirmed, note) "
+        "VALUES (?, ?, '2026-10-20 21:30:00', 10, 1, '00:30-minsk')",
+        (minsk_early, user_d),
+    )
+    conn.execute(
+        "INSERT INTO snapshots (id, user_id, created_at, total_usd, is_confirmed, note) "
+        "VALUES (?, ?, '2026-10-21 01:00:00', 20, 1, '04:00-minsk')",
+        (minsk_later, user_d),
+    )
+    conn.execute(
+        "INSERT INTO snapshots (id, user_id, created_at, total_usd, is_confirmed, note) "
+        "VALUES (?, ?, '2026-10-20 20:59:00', 7, 1, '23:59-minsk')",
+        (minsk_previous, user_d),
     )
     conn.execute(
         "INSERT INTO assets (id, snapshot_id, user_id, asset_type, note) VALUES (?, ?, ?, 'cash', ?)",
@@ -679,6 +935,27 @@ def test_migration_marks_older_same_day_snapshots_and_keeps_them(tmp_path):
     assert str(mixed[iso_t][2]).startswith("2026-10-21 09:00:00")
     assert mixed[iso_t][1] == "iso-t"
 
+    updated = conn.execute(
+        "SELECT updated_at FROM snapshots WHERE id = ?", (late,)
+    ).fetchone()
+    assert str(updated[0]).startswith("2026-10-21 18:00:00")
+
+    minsk = {
+        row[0]: row
+        for row in conn.execute(
+            "SELECT id, note, snapshot_date, superseded_at FROM snapshots WHERE user_id = ?",
+            (user_d,),
+        )
+    }
+    assert str(minsk[minsk_later][2]).startswith("2026-10-21")
+    assert minsk[minsk_later][3] is None
+    assert minsk[minsk_later][1] == "04:00-minsk"
+    assert str(minsk[minsk_early][2]).startswith("2026-10-21")
+    assert str(minsk[minsk_early][3]).startswith("2026-10-21 01:00:00")
+    assert minsk[minsk_early][1] == "00:30-minsk"
+    assert str(minsk[minsk_previous][2]).startswith("2026-10-20")
+    assert minsk[minsk_previous][3] is None
+
     index_sql = conn.execute(
         "SELECT sql FROM sqlite_master WHERE name = 'uq_snapshots_user_date'"
     ).fetchone()[0]
@@ -704,4 +981,72 @@ def test_migration_marks_older_same_day_snapshots_and_keeps_them(tmp_path):
     )
     conn.commit()
     assert conn.execute("SELECT COUNT(*) FROM snapshots WHERE user_id = ?", (user_a,)).fetchone()[0] == 5
+    conn.close()
+
+
+def test_migration_downgrade_drops_day_columns_and_keeps_every_row(tmp_path):
+    db_path = tmp_path / "down.db"
+    env = os.environ.copy()
+    env["DATABASE_URL"] = f"sqlite+aiosqlite:///{db_path}"
+    env["FERNET_KEY"] = ""
+    env["ENVIRONMENT"] = "development"
+    backend = pathlib.Path(__file__).resolve().parents[1]
+
+    subprocess.check_call(
+        [sys.executable, "-m", "alembic", "upgrade", "b8c9d0e1f2a3"],
+        cwd=backend, env=env,
+    )
+    user = uuid.uuid4().hex
+    first = uuid.uuid4().hex
+    second = uuid.uuid4().hex
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "INSERT INTO users (id, email, base_currency, subscription, email_verified, settings, "
+        "totp_enabled, token_version) VALUES (?, ?, 'USD', 'free', 0, '{}', 0, 0)",
+        (user, f"{user}@t.test"),
+    )
+    conn.execute(
+        "INSERT INTO snapshots (id, user_id, created_at, total_usd, is_confirmed, note) "
+        "VALUES (?, ?, '2026-10-21 09:00:00', 1, 1, 'first')",
+        (first, user),
+    )
+    conn.execute(
+        "INSERT INTO snapshots (id, user_id, created_at, total_usd, is_confirmed, note) "
+        "VALUES (?, ?, '2026-10-21 18:00:00', 2, 1, 'second')",
+        (second, user),
+    )
+    conn.commit()
+    conn.close()
+
+    subprocess.check_call([sys.executable, "-m", "alembic", "upgrade", "head"], cwd=backend, env=env)
+    conn = sqlite3.connect(db_path)
+    marked = conn.execute(
+        "SELECT note, superseded_at IS NULL FROM snapshots WHERE user_id = ? ORDER BY created_at",
+        (user,),
+    ).fetchall()
+    assert marked == [("first", 0), ("second", 1)]
+    conn.close()
+
+    subprocess.check_call(
+        [sys.executable, "-m", "alembic", "downgrade", "b8c9d0e1f2a3"],
+        cwd=backend, env=env,
+    )
+    conn = sqlite3.connect(db_path)
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(snapshots)")}
+    assert "snapshot_date" not in columns
+    assert "superseded_at" not in columns
+    assert "updated_at" not in columns
+    notes = [row[0] for row in conn.execute(
+        "SELECT note FROM snapshots WHERE user_id = ? ORDER BY created_at", (user,)
+    )]
+    assert notes == ["first", "second"]
+    conn.close()
+
+    subprocess.check_call([sys.executable, "-m", "alembic", "upgrade", "head"], cwd=backend, env=env)
+    conn = sqlite3.connect(db_path)
+    again = conn.execute(
+        "SELECT note, superseded_at IS NULL FROM snapshots WHERE user_id = ? ORDER BY created_at",
+        (user,),
+    ).fetchall()
+    assert again == [("first", 0), ("second", 1)]
     conn.close()

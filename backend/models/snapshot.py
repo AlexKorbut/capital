@@ -1,6 +1,7 @@
 """Portfolio snapshot — state of a portfolio at a point in time.
 
-One *canonical* snapshot per user per calendar day (UTC): ``superseded_at`` is
+One *canonical* snapshot per user per calendar day in the user's timezone
+(``users.settings["timezone"]``, default Europe/Minsk): ``superseded_at`` is
 NULL. A later save for that day replaces that row in place (see
 ``services.persistence.save_portfolio``). Older same-day rows left behind by
 the migration stay in the table with ``superseded_at`` set — they are not
@@ -17,10 +18,11 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from core.db import Base
 from models.types import EncryptedString
+from core.calendar import local_today
 
 
-def _utc_today() -> date:
-    return datetime.now(timezone.utc).date()
+def _default_snapshot_day() -> date:
+    return local_today(None)
 
 
 class Snapshot(Base):
@@ -45,8 +47,16 @@ class Snapshot(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )
-    # Calendar day this snapshot represents.
-    snapshot_date: Mapped[date] = mapped_column(Date, default=_utc_today)
+    # Bumped when the row is overwritten (full replace or wallet sync).
+    # Reminders and the dashboard timestamp follow this, not ``created_at``.
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+    # Calendar day this snapshot represents, in the user's timezone.
+    snapshot_date: Mapped[date] = mapped_column(Date, default=_default_snapshot_day)
     # Set on an older same-day row when a later snapshot of that day is the
     # canonical one. NULL means this row occupies the day's unique slot.
     superseded_at: Mapped[datetime | None] = mapped_column(

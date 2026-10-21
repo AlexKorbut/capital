@@ -105,6 +105,11 @@ class InputState(TypedDict, total=False):
     total_usd: Optional[Decimal]
     # Confirm-time flag: replace today's snapshot instead of inserting another.
     overwrite: bool
+    # ``all`` replaces every asset. ``wallets`` replaces only rows that have a
+    # wallet address (wallet sync). Absent means ``all``.
+    asset_replace: str
+    # Calendar day (YYYY-MM-DD) in the user's timezone, chosen by the router.
+    snapshot_day: Optional[str]
     # Set when save_to_db refuses a same-day insert (no overwrite flag).
     error_code: Optional[str]
     snapshot_date: Optional[str]

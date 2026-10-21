@@ -133,6 +133,7 @@ async def _count_snapshots_this_month(db: AsyncSession, user_id) -> int:
             .where(
                 Snapshot.user_id == user_id,
                 Snapshot.is_confirmed.is_(True),
+                Snapshot.superseded_at.is_(None),
                 Snapshot.created_at >= threshold,
             )
         )

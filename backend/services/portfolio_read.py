@@ -139,6 +139,7 @@ async def current_portfolio(db: AsyncSession, user_id, base_currency: str = "USD
     return {
         "snapshot_id": str(snap.id),
         "created_at": snap.created_at.isoformat() if snap.created_at else None,
+        "updated_at": snap.updated_at.isoformat() if snap.updated_at else None,
         "total_usd": _d(snap.total_usd),
         "estimated_total_usd": _d(estimated_total),
         "base_currency": base,

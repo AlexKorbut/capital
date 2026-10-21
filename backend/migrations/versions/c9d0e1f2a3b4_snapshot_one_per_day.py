@@ -1,10 +1,12 @@
 """one canonical portfolio snapshot per user per calendar day
 
-Historical duplicates are not deleted. The latest row of each (user, day)
+Historical duplicates are not deleted. The day is the Europe/Minsk calendar
+day of ``created_at`` (stored as UTC). The latest row of each (user, day)
 stays canonical (``superseded_at`` NULL). Every earlier row of that day keeps
 its id, assets, note and foreign keys (advice, scenarios) and is only stamped
 ``superseded_at`` with the later snapshot's ``created_at``. A partial unique
-index then allows those marked rows to share the date.
+index then allows those marked rows to share the date. ``updated_at`` is
+backfilled from ``created_at``.
 
 Revision ID: c9d0e1f2a3b4
 Revises: b8c9d0e1f2a3
@@ -14,9 +16,14 @@ Create Date: 2026-10-21 12:00:00.000000
 from collections import defaultdict
 from datetime import date, datetime, timezone
 from typing import Sequence, Union
+from zoneinfo import ZoneInfo
 
 from alembic import op
 import sqlalchemy as sa
+
+# Historical rows have no per-user timezone stored. The owner is in Minsk, and
+# this revision has not been applied anywhere, so every backfilled day is Minsk.
+_BACKFILL_ZONE = ZoneInfo("Europe/Minsk")
 
 
 revision: str = "c9d0e1f2a3b4"
@@ -45,16 +52,20 @@ def _as_datetime(value) -> datetime:
 
 
 def _as_date(value) -> date:
-    """Calendar day of a stored ``created_at``."""
+    """Calendar day of a stored ``created_at``, in Europe/Minsk.
+
+    Naive values are UTC (how the app stores them). 00:30 in Minsk is still
+    the previous UTC date, and must land on the Minsk day.
+    """
     if isinstance(value, datetime):
-        return _as_datetime(value).date()
-    if isinstance(value, date):
+        return _as_datetime(value).astimezone(_BACKFILL_ZONE).date()
+    if isinstance(value, date) and not isinstance(value, datetime):
         return value
     text = str(value or "").strip()
     try:
-        return date.fromisoformat(text[:10])
+        return _as_datetime(text).astimezone(_BACKFILL_ZONE).date()
     except ValueError:
-        return datetime.now(timezone.utc).date()
+        return datetime.now(timezone.utc).astimezone(_BACKFILL_ZONE).date()
 
 
 def _backfill_snapshot_dates() -> None:
@@ -101,16 +112,31 @@ def _mark_older_same_day_snapshots() -> None:
             )
 
 
+def _backfill_updated_at() -> None:
+    """Overwrite time starts equal to ``created_at``; nothing has been edited yet."""
+    op.get_bind().execute(
+        sa.text("UPDATE snapshots SET updated_at = created_at WHERE updated_at IS NULL")
+    )
+
+
 def upgrade() -> None:
     # ADD COLUMN is portable. NOT NULL is not a plain ALTER on SQLite, so that
     # one change goes through batch mode after dates are filled in. The unique
     # index is partial (canonical rows only) and is a plain CREATE INDEX.
     op.add_column("snapshots", sa.Column("snapshot_date", sa.Date(), nullable=True))
     op.add_column("snapshots", sa.Column("superseded_at", sa.DateTime(timezone=True), nullable=True))
+    op.add_column("snapshots", sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True))
     _backfill_snapshot_dates()
     _mark_older_same_day_snapshots()
+    _backfill_updated_at()
     with op.batch_alter_table("snapshots") as batch:
         batch.alter_column("snapshot_date", existing_type=sa.Date(), nullable=False)
+        batch.alter_column(
+            "updated_at",
+            existing_type=sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.func.now(),
+        )
     op.create_index(
         "uq_snapshots_user_date",
         "snapshots",
@@ -126,3 +152,4 @@ def downgrade() -> None:
     with op.batch_alter_table("snapshots") as batch:
         batch.drop_column("snapshot_date")
         batch.drop_column("superseded_at")
+        batch.drop_column("updated_at")

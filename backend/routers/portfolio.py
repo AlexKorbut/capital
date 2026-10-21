@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from agents import runners
 from agents.state import AssetItem
+from core.calendar import local_today
 from core.db import get_db
 from core.deps import get_current_user
 from core.ratelimit import INPUT_LIMIT, limiter
@@ -259,10 +260,13 @@ async def portfolio_confirm(
     final_assets = body.assets if body.assets is not None else values.get("assets")
     check_asset_count(limits_for(current), len(final_assets or []))
 
-    # One snapshot per UTC day. Refuse before resuming so the same thread can
-    # be confirmed again with overwrite=true. Quota applies only to a new day:
-    # replacing today's snapshot does not consume another monthly slot.
-    existing = await persistence_service.find_snapshot(db, current.id)
+    # One snapshot per local day (user timezone, default Europe/Minsk). Refuse
+    # before resuming so the same thread can be confirmed again with
+    # overwrite=true. Quota applies only to a new day: replacing today's
+    # snapshot does not consume another monthly slot.
+    day = local_today(current.settings)
+    edits["snapshot_day"] = day.isoformat()
+    existing = await persistence_service.find_snapshot(db, current.id, day)
     if existing is not None and not body.overwrite:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

@@ -95,6 +95,30 @@ async def test_enforce_snapshot_quota_blocks_fourth_free_snapshot(db_ready):
         assert ei.value.detail["code"] == "quota_exceeded"
 
 
+async def test_superseded_snapshots_do_not_count_toward_the_monthly_quota(db_ready):
+    from core.db import SessionLocal
+    from models.snapshot import Snapshot
+
+    uid = uuid.uuid4()
+    async with SessionLocal() as s:
+        s.add(User(
+            id=uid, email=f"{uid}@t.test", password_hash="x",
+            base_currency="USD", subscription="free",
+        ))
+        for i in range(3):
+            s.add(Snapshot(
+                id=uuid.uuid4(), user_id=uid, total_usd=Decimal("100"),
+                base_currency="USD", is_confirmed=True,
+                snapshot_date=date(2020, 3, 1) + timedelta(days=i),
+                superseded_at=datetime.now(timezone.utc),
+            ))
+        await s.commit()
+
+    async with SessionLocal() as s:
+        user = await s.get(User, uid)
+        assert await enforce_snapshot_quota(user=user, db=s) is user
+
+
 async def test_enforce_snapshot_quota_passes_for_pro(db_ready):
     from core.db import SessionLocal
     from models.snapshot import Snapshot

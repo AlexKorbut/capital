@@ -142,6 +142,10 @@ export function InputPage() {
       if (found) setConflict(found);
     },
   });
+  const overwriteError =
+    conflict && confirm.isError && !readSnapshotConflict(confirm.error)
+      ? errMessage(confirm.error)
+      : null;
 
   function updateAsset(idx: number, patch: Partial<AssetItem>) {
     setAssets((prev) =>
@@ -406,6 +410,7 @@ export function InputPage() {
         <SnapshotOverwriteDialog
           snapshotDate={conflict.snapshot_date}
           pending={confirm.isPending}
+          error={overwriteError}
           onCancel={() => {
             setConflict(null);
             confirm.reset();

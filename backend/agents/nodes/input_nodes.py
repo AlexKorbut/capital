@@ -10,6 +10,7 @@ graph pauses *before* it so the user can confirm/edit, then resumes to persist.
 """
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 
 from agents.state import InputState
@@ -169,6 +170,16 @@ async def save_to_db(state: InputState) -> dict[str, Any]:
         return {"error": "save_to_db: missing user_id", "trace": ["save_to_db: no user_id"]}
 
     assets = state.get("assets", []) or []
+    snapshot_date = None
+    raw_day = state.get("snapshot_day")
+    if raw_day:
+        try:
+            snapshot_date = date.fromisoformat(str(raw_day)[:10])
+        except ValueError:
+            snapshot_date = None
+    replace = state.get("asset_replace") or "all"
+    if replace not in ("all", "wallets"):
+        replace = "all"
     try:
         snapshot_id = await persistence_service.save_portfolio(
             user_id=user_id,
@@ -177,7 +188,9 @@ async def save_to_db(state: InputState) -> dict[str, Any]:
             raw_input=state.get("raw_text"),
             input_type=state.get("input_type", "text"),
             total_usd=state.get("total_usd"),
+            snapshot_date=snapshot_date,
             overwrite=bool(state.get("overwrite")),
+            asset_replace=replace,
         )
     except persistence_service.SnapshotDateConflict as exc:
         return {

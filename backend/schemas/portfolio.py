@@ -34,7 +34,7 @@ class ConfirmRequest(BaseModel):
     thread_id: str
     # Optional human-edited asset list; if omitted, the parsed assets are saved.
     assets: Optional[list[AssetItem]] = None
-    # Required to replace a snapshot that already exists for this UTC date.
+    # Required to replace a snapshot that already exists for this local date.
     # Absent or false → 409 snapshot_exists, the pending thread stays open.
     overwrite: bool = False
 
@@ -80,6 +80,7 @@ class AssetRow(BaseModel):
 class CurrentPortfolio(BaseModel):
     snapshot_id: str
     created_at: Optional[str] = None
+    updated_at: Optional[str] = None
     total_usd: Optional[str] = None
     estimated_total_usd: Optional[str] = None
     base_currency: Optional[str] = None
