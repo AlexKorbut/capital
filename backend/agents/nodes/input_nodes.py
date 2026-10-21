@@ -10,6 +10,7 @@ graph pauses *before* it so the user can confirm/edit, then resumes to persist.
 """
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 
 from agents.state import InputState
@@ -158,20 +159,47 @@ async def human_review(state: InputState) -> dict[str, Any]:
 
 
 async def save_to_db(state: InputState) -> dict[str, Any]:
-    """Persist Snapshot + Asset rows (Decimal). Opens its own DB session."""
+    """Persist Snapshot + Asset rows (Decimal). Opens its own DB session.
+
+    ``overwrite`` (set by ``/portfolio/confirm``) replaces today's snapshot.
+    Without it, a same-day snapshot comes back as ``error_code=snapshot_exists``
+    and nothing is written.
+    """
     user_id = state.get("user_id")
     if not user_id:
         return {"error": "save_to_db: missing user_id", "trace": ["save_to_db: no user_id"]}
 
     assets = state.get("assets", []) or []
-    snapshot_id = await persistence_service.save_portfolio(
-        user_id=user_id,
-        assets=assets,
-        base_currency=state.get("base_currency", "USD") or "USD",
-        raw_input=state.get("raw_text"),
-        input_type=state.get("input_type", "text"),
-        total_usd=state.get("total_usd"),
-    )
+    snapshot_date = None
+    raw_day = state.get("snapshot_day")
+    if raw_day:
+        try:
+            snapshot_date = date.fromisoformat(str(raw_day)[:10])
+        except ValueError:
+            snapshot_date = None
+    replace = state.get("asset_replace") or "all"
+    if replace not in ("all", "wallets"):
+        replace = "all"
+    try:
+        snapshot_id = await persistence_service.save_portfolio(
+            user_id=user_id,
+            assets=assets,
+            base_currency=state.get("base_currency", "USD") or "USD",
+            raw_input=state.get("raw_text"),
+            input_type=state.get("input_type", "text"),
+            total_usd=state.get("total_usd"),
+            snapshot_date=snapshot_date,
+            overwrite=bool(state.get("overwrite")),
+            asset_replace=replace,
+        )
+    except persistence_service.SnapshotDateConflict as exc:
+        return {
+            "error": exc.message,
+            "error_code": "snapshot_exists",
+            "snapshot_date": exc.snapshot_date.isoformat(),
+            "conflict_snapshot_id": str(exc.snapshot_id),
+            "trace": [f"save_to_db: conflict {exc.snapshot_date.isoformat()}"],
+        }
     return {
         "snapshot_id": snapshot_id,
         "trace": [f"save_to_db: snapshot {snapshot_id} ({len(assets)} assets)"],

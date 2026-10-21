@@ -68,8 +68,13 @@ export async function submitInput(body: {
 export async function confirmInput(body: {
   thread_id: string;
   assets?: AssetItem[];
+  overwrite?: boolean;
 }): Promise<ConfirmResponse> {
-  const { data } = await api.post<ConfirmResponse>("/portfolio/confirm", body);
+  // The flag is sent only after the user confirms a replace. Omitting it is
+  // what makes the API answer 409 instead of overwriting.
+  const { overwrite, ...rest } = body;
+  const payload = overwrite ? { ...rest, overwrite: true } : rest;
+  const { data } = await api.post<ConfirmResponse>("/portfolio/confirm", payload);
   return data;
 }
 
@@ -153,6 +158,7 @@ export interface AssetRow {
 export interface CurrentPortfolio {
   snapshot_id: string;
   created_at: string | null;
+  updated_at: string | null;
   total_usd: string | null;
   estimated_total_usd: string | null;
   base_currency: string | null;

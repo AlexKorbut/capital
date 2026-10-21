@@ -36,7 +36,9 @@ export async function deleteWallet(id: string): Promise<void> {
   await api.delete(`/wallets/${id}`);
 }
 
-export async function syncWallets(): Promise<WalletSyncResult> {
-  const { data } = await api.post<WalletSyncResult>("/wallets/sync", {});
+export async function syncWallets(overwrite = false): Promise<WalletSyncResult> {
+  const { data } = await api.post<WalletSyncResult>("/wallets/sync", null, {
+    params: overwrite ? { overwrite: true } : {},
+  });
   return data;
 }

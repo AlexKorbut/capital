@@ -36,7 +36,11 @@ async def _distinct_holdings() -> list[AssetItem]:
             await db.scalars(
                 select(Asset)
                 .join(Snapshot, Snapshot.id == Asset.snapshot_id)
-                .where(Snapshot.is_confirmed.is_(True), Snapshot.created_at >= since)
+                .where(
+                    Snapshot.is_confirmed.is_(True),
+                    Snapshot.superseded_at.is_(None),
+                    Snapshot.created_at >= since,
+                )
                 .limit(_MAX_ASSETS)
             )
         )

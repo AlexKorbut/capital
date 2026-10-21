@@ -8,8 +8,14 @@ import {
   syncWallets,
   type Chain,
 } from "@/services/wallets";
+import { errMessage } from "@/components/states";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  readSnapshotConflict,
+  SnapshotOverwriteDialog,
+  type SnapshotConflict,
+} from "@/components/SnapshotOverwriteDialog";
 import { useT } from "@/lib/i18n";
 
 const CHAINS: Chain[] = ["BTC", "ETH", "TON"];
@@ -32,6 +38,7 @@ export function WalletsSection() {
   const wallets = useQuery({ queryKey: ["wallets"], queryFn: listWallets });
   const [chain, setChain] = useState<Chain>("BTC");
   const [address, setAddress] = useState("");
+  const [conflict, setConflict] = useState<SnapshotConflict | null>(null);
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["wallets"] });
     qc.invalidateQueries({ queryKey: ["portfolio"] });
@@ -48,7 +55,21 @@ export function WalletsSection() {
     mutationFn: (id: string) => deleteWallet(id),
     onSuccess: invalidate,
   });
-  const sync = useMutation({ mutationFn: syncWallets, onSuccess: invalidate });
+  const sync = useMutation({
+    mutationFn: (overwrite: boolean) => syncWallets(overwrite),
+    onSuccess: () => {
+      setConflict(null);
+      invalidate();
+    },
+    onError: (error) => {
+      const found = readSnapshotConflict(error);
+      if (found) setConflict(found);
+    },
+  });
+  const overwriteError =
+    conflict && sync.isError && !readSnapshotConflict(sync.error)
+      ? errMessage(sync.error)
+      : null;
 
   const list = wallets.data ?? [];
 
@@ -63,7 +84,7 @@ export function WalletsSection() {
           <Button
             variant="outline"
             disabled={sync.isPending}
-            onClick={() => sync.mutate()}
+            onClick={() => sync.mutate(false)}
           >
             {sync.isPending
               ? t("Синхронизирую…", "Syncing…")
@@ -155,6 +176,24 @@ export function WalletsSection() {
           {t("Снимок создан ·", "Snapshot created ·")} {usd(sync.data.total_usd)}{" "}
           {t("из", "from")} {sync.data.wallet_count} {t("кошельк(ов).", "wallet(s).")}
         </p>
+      )}
+      {sync.isError && !conflict && (
+        <p className="mt-3 text-sm text-red-500">
+          {t("Не удалось добавить кошельки в портфель.", "Couldn't add the wallets to the portfolio.")}
+        </p>
+      )}
+      {conflict && (
+        <SnapshotOverwriteDialog
+          snapshotDate={conflict.snapshot_date}
+          pending={sync.isPending}
+          error={overwriteError}
+          variant="wallets"
+          onCancel={() => {
+            setConflict(null);
+            sync.reset();
+          }}
+          onConfirm={() => sync.mutate(true)}
+        />
       )}
     </section>
   );

@@ -14,8 +14,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agents.state import AssetItem
+from core.calendar import local_today
 from models.asset import Asset
 from models.snapshot import Snapshot
+from models.user import User
 from services import enrichment, portfolio_read
 
 
@@ -74,9 +76,11 @@ async def _ensure_snapshot(db: AsyncSession, user_id, base_currency: str) -> Sna
     snap = await portfolio_read.latest_snapshot(db, user_id)
     if snap is not None:
         return snap
+    owner = await db.get(User, _to_uuid(user_id))
     snap = Snapshot(
         id=uuid.uuid4(), user_id=_to_uuid(user_id), base_currency=base_currency,
         input_type="manual", is_confirmed=True,
+        snapshot_date=local_today(owner.settings if owner is not None else None),
     )
     db.add(snap)
     await db.flush()

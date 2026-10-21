@@ -56,6 +56,7 @@ async def compute_returns(db: AsyncSession, user_id) -> dict | None:
             .where(
                 Snapshot.user_id == _to_uuid(user_id),
                 Snapshot.is_confirmed.is_(True),
+                Snapshot.superseded_at.is_(None),
                 Snapshot.total_usd.is_not(None),
             )
             .order_by(Snapshot.created_at.asc())

@@ -170,10 +170,14 @@ export function DashboardPage() {
                   </span>
                 </p>
               )}
-            {portfolio.created_at && (
+            {(portfolio.updated_at || portfolio.created_at) && (
               <p className="mt-1 text-xs text-muted-foreground">
-                {t("снимок от", "snapshot from")}{" "}
-                {new Date(portfolio.created_at).toLocaleString()}
+                {portfolio.updated_at &&
+                portfolio.created_at &&
+                Date.parse(portfolio.updated_at) - Date.parse(portfolio.created_at) > 1000
+                  ? t("обновлён", "updated")
+                  : t("снимок от", "snapshot from")}{" "}
+                {new Date(portfolio.updated_at || portfolio.created_at || "").toLocaleString()}
               </p>
             )}
           </section>

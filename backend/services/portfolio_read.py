@@ -50,7 +50,11 @@ def _to_uuid(value) -> uuid.UUID:
 async def latest_snapshot(db: AsyncSession, user_id) -> Snapshot | None:
     return await db.scalar(
         select(Snapshot)
-        .where(Snapshot.user_id == _to_uuid(user_id), Snapshot.is_confirmed.is_(True))
+        .where(
+            Snapshot.user_id == _to_uuid(user_id),
+            Snapshot.is_confirmed.is_(True),
+            Snapshot.superseded_at.is_(None),
+        )
         .order_by(Snapshot.created_at.desc())
         .limit(1)
     )
@@ -135,6 +139,7 @@ async def current_portfolio(db: AsyncSession, user_id, base_currency: str = "USD
     return {
         "snapshot_id": str(snap.id),
         "created_at": snap.created_at.isoformat() if snap.created_at else None,
+        "updated_at": snap.updated_at.isoformat() if snap.updated_at else None,
         "total_usd": _d(snap.total_usd),
         "estimated_total_usd": _d(estimated_total),
         "base_currency": base,
@@ -148,7 +153,11 @@ async def list_snapshots(db: AsyncSession, user_id, limit: int = 50) -> list[dic
     rows = list(
         await db.scalars(
             select(Snapshot)
-            .where(Snapshot.user_id == _to_uuid(user_id), Snapshot.is_confirmed.is_(True))
+            .where(
+                Snapshot.user_id == _to_uuid(user_id),
+                Snapshot.is_confirmed.is_(True),
+                Snapshot.superseded_at.is_(None),
+            )
             .order_by(Snapshot.created_at.desc())
             .limit(limit)
         )
@@ -172,6 +181,7 @@ async def history_chart(db: AsyncSession, user_id, limit: int = 365) -> list[dic
             .where(
                 Snapshot.user_id == _to_uuid(user_id),
                 Snapshot.is_confirmed.is_(True),
+                Snapshot.superseded_at.is_(None),
                 Snapshot.total_usd.is_not(None),
             )
             .order_by(Snapshot.created_at.asc())

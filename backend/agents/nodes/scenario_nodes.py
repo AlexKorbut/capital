@@ -39,7 +39,11 @@ async def _load_base_assets(state: ScenarioState) -> list:
     async with SessionLocal() as s:
         snap = await s.scalar(
             select(Snapshot)
-            .where(Snapshot.user_id == uid, Snapshot.is_confirmed.is_(True))
+            .where(
+                Snapshot.user_id == uid,
+                Snapshot.is_confirmed.is_(True),
+                Snapshot.superseded_at.is_(None),
+            )
             .order_by(Snapshot.created_at.desc())
             .limit(1)
         )

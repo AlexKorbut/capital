@@ -14,7 +14,9 @@ from core.deps import get_current_user
 from models.user import User
 from models.wallet import Wallet
 from schemas.wallet import WalletCreate, WalletOut, WalletSyncResult
+from core.calendar import local_today
 from services import market
+from services import persistence as persistence_service
 from services import wallets as wallets_service
 
 router = APIRouter(prefix="/wallets", tags=["wallets"])
@@ -95,6 +97,7 @@ async def delete_wallet(
 @router.post("/sync", response_model=WalletSyncResult)
 async def sync_to_portfolio(
     request: Request,
+    overwrite: bool = False,
     current: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> WalletSyncResult:
@@ -102,7 +105,20 @@ async def sync_to_portfolio(
 
     Runs the standard input graph (validate → enrich → persist) with the wallet
     balances pre-parsed, auto-confirming since on-chain balances need no review.
+
+    If today's snapshot (user timezone, default Europe/Minsk) already exists,
+    ``overwrite=true`` is required — otherwise 409, and nothing is written.
+    Overwrite replaces only assets that carry a wallet address. Cash, deposits,
+    property and other non-wallet rows stay; the total is recomputed.
     """
+    day = local_today(current.settings)
+    existing = await persistence_service.find_snapshot(db, current.id, day)
+    if existing is not None and not overwrite:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=persistence_service.conflict_detail(existing.snapshot_date, existing.id),
+        )
+
     rows = list(await db.scalars(select(Wallet).where(Wallet.user_id == current.id)))
     if not rows:
         raise HTTPException(status_code=400, detail="Нет отслеживаемых кошельков.")
@@ -123,13 +139,27 @@ async def sync_to_portfolio(
         "input_type": "import",
         "raw_text": "",
         "assets": assets,
+        "overwrite": overwrite,
+        "asset_replace": "wallets",
+        "snapshot_day": day.isoformat(),
     }
     await runners.run_input(graphs, thread_id, state)        # pauses at human_review
     result = await runners.resume_input(graphs, thread_id)   # persist
+    if result.get("error_code") == "snapshot_exists":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=persistence_service.conflict_detail(
+                result.get("snapshot_date"),
+                uuid.UUID(str(result.get("conflict_snapshot_id"))),
+            ),
+        )
     if result.get("error") or not result.get("snapshot_id"):
         raise HTTPException(status_code=400, detail=result.get("error") or "Не удалось сохранить")
 
-    total = result.get("total_usd")
+    saved = await persistence_service.find_snapshot(db, current.id, day)
+    if saved is not None:
+        await db.refresh(saved)
+    total = saved.total_usd if saved is not None else result.get("total_usd")
     return WalletSyncResult(
         snapshot_id=str(result["snapshot_id"]),
         total_usd=str(total) if total is not None else None,

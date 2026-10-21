@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from core.db import SessionLocal
 from models.snapshot import Snapshot
@@ -35,10 +35,17 @@ async def run_update_reminders(stale_days: int = STALE_DAYS) -> int:
         for user in users:
             if _opted_out(user) or not user.email_verified:
                 continue
+            # ``updated_at`` moves on overwrite, including a wallet sync that
+            # keeps the same row. ``created_at`` stays on the original day.
+            freshness = func.coalesce(Snapshot.updated_at, Snapshot.created_at)
             last = await db.scalar(
-                select(Snapshot.created_at)
-                .where(Snapshot.user_id == user.id, Snapshot.is_confirmed.is_(True))
-                .order_by(Snapshot.created_at.desc())
+                select(freshness)
+                .where(
+                    Snapshot.user_id == user.id,
+                    Snapshot.is_confirmed.is_(True),
+                    Snapshot.superseded_at.is_(None),
+                )
+                .order_by(freshness.desc())
                 .limit(1)
             )
             if last is None:
