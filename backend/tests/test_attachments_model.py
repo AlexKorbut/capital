@@ -21,6 +21,8 @@ from models.user import User
 BACKEND = Path(__file__).resolve().parent.parent
 ATTACHMENTS_REVISION = "b8c9d0e1f2a3"
 PREVIOUS_REVISION = "a7b8c9d0e1f2"
+# Head moved on when snapshots became one-per-day. Attachments stay in the chain.
+HEAD_REVISION = "c9d0e1f2a3b4"
 SHA_A = "a" * 64
 SHA_B = "b" * 64
 
@@ -170,7 +172,7 @@ def test_alembic_upgrade_head_creates_fin_attachments(tmp_path):
     assert up.returncode == 0, up.stderr[-2000:]
 
     heads = _alembic(db_file, "heads")
-    assert ATTACHMENTS_REVISION in heads.stdout and "(head)" in heads.stdout
+    assert HEAD_REVISION in heads.stdout and "(head)" in heads.stdout
     insp = _inspect(db_file)
     assert "fin_attachments" in insp.get_table_names()
     assert {c["name"] for c in insp.get_columns("fin_attachments")} == {

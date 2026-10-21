@@ -50,6 +50,7 @@ from schemas.portfolio import (
     SnapshotSummary,
 )
 from services import allocation as allocation_service
+from services import persistence as persistence_service
 from services import portfolio_edit, portfolio_read, returns as returns_service
 
 router = APIRouter(prefix="/portfolio", tags=["portfolio"])
@@ -221,11 +222,24 @@ async def portfolio_import(
     )
 
 
+def _snapshot_conflict_from_result(result: dict[str, Any]) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "code": "snapshot_exists",
+            "message": result.get("error") or "Снимок за эту дату уже есть.",
+            "snapshot_date": result.get("snapshot_date"),
+            "snapshot_id": result.get("conflict_snapshot_id"),
+        },
+    )
+
+
 @router.post("/confirm", response_model=ConfirmResponse)
 async def portfolio_confirm(
     body: ConfirmRequest,
     request: Request,
-    current: User = Depends(enforce_snapshot_quota),
+    current: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ) -> ConfirmResponse:
     graphs = _graphs(request)
 
@@ -235,16 +249,32 @@ async def portfolio_confirm(
     if not values or values.get("user_id") != str(current.id):
         raise HTTPException(status_code=404, detail="No pending input for this thread")
 
-    edits: dict[str, Any] | None = None
+    edits: dict[str, Any] = {}
     if body.assets is not None:
-        edits = {"assets": body.assets}
+        edits["assets"] = body.assets
+    if body.overwrite:
+        edits["overwrite"] = True
 
     # Plan gate: a snapshot may hold at most N assets (resume below persists it).
     final_assets = body.assets if body.assets is not None else values.get("assets")
     check_asset_count(limits_for(current), len(final_assets or []))
 
-    result = await runners.resume_input(graphs, body.thread_id, edits)
+    # One snapshot per UTC day. Refuse before resuming so the same thread can
+    # be confirmed again with overwrite=true. Quota applies only to a new day:
+    # replacing today's snapshot does not consume another monthly slot.
+    existing = await persistence_service.find_snapshot(db, current.id)
+    if existing is not None and not body.overwrite:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=persistence_service.conflict_detail(existing.snapshot_date, existing.id),
+        )
+    if existing is None:
+        await enforce_snapshot_quota(user=current, db=db)
 
+    result = await runners.resume_input(graphs, body.thread_id, edits or None)
+
+    if result.get("error_code") == "snapshot_exists":
+        raise _snapshot_conflict_from_result(result)
     if result.get("error"):
         raise HTTPException(status_code=400, detail=result["error"])
 

@@ -37,7 +37,11 @@ async def run_update_reminders(stale_days: int = STALE_DAYS) -> int:
                 continue
             last = await db.scalar(
                 select(Snapshot.created_at)
-                .where(Snapshot.user_id == user.id, Snapshot.is_confirmed.is_(True))
+                .where(
+                    Snapshot.user_id == user.id,
+                    Snapshot.is_confirmed.is_(True),
+                    Snapshot.superseded_at.is_(None),
+                )
                 .order_by(Snapshot.created_at.desc())
                 .limit(1)
             )

@@ -17,6 +17,11 @@ import {
 } from "@/services/portfolio";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  readSnapshotConflict,
+  SnapshotOverwriteDialog,
+  type SnapshotConflict,
+} from "@/components/SnapshotOverwriteDialog";
 import { useT } from "@/lib/i18n";
 
 const EXAMPLE =
@@ -28,7 +33,13 @@ const ASSET_TYPES = Object.keys(ASSET_TYPE_LABELS) as AssetType[];
 
 function errMessage(e: unknown): string {
   if (e instanceof AxiosError) {
-    return (e.response?.data as { detail?: string })?.detail ?? e.message;
+    const detail = (e.response?.data as { detail?: unknown })?.detail;
+    if (typeof detail === "string") return detail;
+    if (detail && typeof detail === "object" && "message" in detail) {
+      const message = (detail as { message?: unknown }).message;
+      if (typeof message === "string") return message;
+    }
+    return e.message;
   }
   return e instanceof Error ? e.message : "Что-то пошло не так";
 }
@@ -42,6 +53,7 @@ export function InputPage() {
   const [preview, setPreview] = useState<PreviewResponse | null>(null);
   const [assets, setAssets] = useState<AssetItem[]>([]);
   const [recording, setRecording] = useState(false);
+  const [conflict, setConflict] = useState<SnapshotConflict | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
 
@@ -115,9 +127,20 @@ export function InputPage() {
   }
 
   const confirm = useMutation({
-    mutationFn: () =>
-      confirmInput({ thread_id: preview!.thread_id, assets }),
+    mutationFn: (overwrite: boolean) =>
+      confirmInput({
+        thread_id: preview!.thread_id,
+        assets,
+        overwrite,
+      }),
+    onMutate: (overwrite) => {
+      if (!overwrite) setConflict(null);
+    },
     onSuccess: () => navigate("/"),
+    onError: (error) => {
+      const found = readSnapshotConflict(error);
+      if (found) setConflict(found);
+    },
   });
 
   function updateAsset(idx: number, patch: Partial<AssetItem>) {
@@ -362,13 +385,13 @@ export function InputPage() {
             ))}
           </div>
 
-          {confirm.isError && (
+          {confirm.isError && !conflict && (
             <p className="text-sm text-red-500">{errMessage(confirm.error)}</p>
           )}
 
           <div className="flex gap-3">
             <Button
-              onClick={() => confirm.mutate()}
+              onClick={() => confirm.mutate(false)}
               disabled={assets.length === 0 || confirm.isPending}
             >
               {confirm.isPending
@@ -377,6 +400,18 @@ export function InputPage() {
             </Button>
           </div>
         </section>
+      )}
+
+      {conflict && (
+        <SnapshotOverwriteDialog
+          snapshotDate={conflict.snapshot_date}
+          pending={confirm.isPending}
+          onCancel={() => {
+            setConflict(null);
+            confirm.reset();
+          }}
+          onConfirm={() => confirm.mutate(true)}
+        />
       )}
     </div>
   );

@@ -34,7 +34,11 @@ async def _eligible_user_ids() -> list[str]:
         for user in users:
             has_snapshot = await db.scalar(
                 select(Snapshot.id)
-                .where(Snapshot.user_id == user.id, Snapshot.is_confirmed.is_(True))
+                .where(
+                    Snapshot.user_id == user.id,
+                    Snapshot.is_confirmed.is_(True),
+                    Snapshot.superseded_at.is_(None),
+                )
                 .limit(1)
             )
             if not has_snapshot:
